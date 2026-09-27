@@ -1,15 +1,60 @@
 /* Giao diện – Okuma LB3000EX II / OSP-P300L */
 (function () {
   'use strict';
-  const O = window.OKU, $ = s => document.querySelector(s), KEY = 'okuma_lb3000_v1';
+  const O = window.OKU, $ = s => document.querySelector(s);
+  const OLD_KEY = 'okuma_lb3000_v1', LIB_KEY = 'okuma_lb3000_setups_v1';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  let P = load(); let R = null; let selId = null;
+  let LIB = null, P = null, R = null, selId = null, igfStep = 1;
 
-  function load() {
-    try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && j.ops) { j.settings = Object.assign({}, O.DEFAULT_SETTINGS, j.settings); j.igf = Object.assign({}, O.DEFAULT_IGF, j.igf || {}); return j; } } catch (e) { }
-    return { settings: Object.assign({}, O.DEFAULT_SETTINGS), ops: [], igf: Object.assign({}, O.DEFAULT_IGF) };
+  function normalizeProject(j) {
+    const p = {
+      settings: Object.assign({}, O.DEFAULT_SETTINGS, (j && j.settings) || {}),
+      ops: Array.isArray(j && j.ops) ? j.ops : [],
+      igf: Object.assign({}, O.DEFAULT_IGF, (j && j.igf) || {})
+    };
+    if (p.settings.stockD) p.igf.od = p.settings.stockD;
+    if (p.settings.stockL) p.igf.ol = p.settings.stockL;
+    if (p.settings.material) p.igf.material = p.settings.material;
+    if (p.settings.g50) p.igf.g50 = p.settings.g50;
+    if (p.settings.jawLen) p.igf.jawL2 = p.settings.jawLen;
+    if (p.settings.jawOd) p.igf.jawD3 = p.settings.jawOd;
+    if (p.settings.tailDia) p.igf.tailD = p.settings.tailDia;
+    return p;
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(P)); } catch (e) { } refresh(); }
+  function newId() { return Math.random().toString(36).slice(2, 10); }
+  function makeSetup(name, project) {
+    const now = Date.now();
+    return { id: newId(), name: String(name || 'Sản phẩm mới').trim() || 'Sản phẩm mới', created: now, modified: now, step: 1, project: normalizeProject(project) };
+  }
+  function loadLib() {
+    let lib = null;
+    try { lib = JSON.parse(localStorage.getItem(LIB_KEY) || 'null'); } catch (e) { lib = null; }
+    if (!lib || !Array.isArray(lib.items)) {
+      lib = { v: 1, active: null, items: [] };
+      try {
+        const old = JSON.parse(localStorage.getItem(OLD_KEY) || 'null');
+        if (old && Array.isArray(old.ops)) {
+          const nm = (old.settings && (old.settings.comment || old.settings.progName)) || 'Setup đã lưu';
+          lib.items.push(makeSetup(nm, old));
+        }
+      } catch (e) { /* bỏ bản cũ hỏng */ }
+      try { localStorage.setItem(LIB_KEY, JSON.stringify(lib)); } catch (e) { /* bộ nhớ đầy */ }
+    }
+    lib.items.forEach(s => { s.project = normalizeProject(s.project); if (!s.id) s.id = newId(); });
+    if (lib.active && !lib.items.some(s => s.id === lib.active)) lib.active = null;
+    return lib;
+  }
+  function activeSetup() { return LIB.items.find(s => s.id === LIB.active) || null; }
+  function persistLib() {
+    const s = activeSetup();
+    if (s) { s.project = JSON.parse(JSON.stringify(P)); s.modified = Date.now(); s.step = igfStep; }
+    try { localStorage.setItem(LIB_KEY, JSON.stringify(LIB)); } catch (e) { /* bộ nhớ đầy */ }
+    try { if (s) localStorage.setItem(OLD_KEY, JSON.stringify(P)); } catch (e) { /* bộ nhớ đầy */ }
+  }
+  function save() { persistLib(); refresh(); }
+  LIB = loadLib();
+  P = activeSetup() ? normalizeProject(activeSetup().project) : normalizeProject(null);
+  if (activeSetup()) igfStep = activeSetup().step || 1;
   function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 2200); }
 
   // ---------- Thiết lập ----------
@@ -65,9 +110,16 @@
     });
   }
 
+  const MACHINE_FIELDS = SET_FIELDS.filter(fd => !['stockD', 'stockL', 'material', 'jawLen', 'jawOd'].includes(fd.k));
   function renderSettings() {
-    const f = $('#setForm'); f.innerHTML = SET_FIELDS.map(fd => fieldHTML(fd, P.settings[fd.k], 's_')).join('');
-    f.oninput = f.onchange = () => { SET_FIELDS.forEach(fd => { const v = readField(fd, 's_', f); if (v !== undefined) P.settings[fd.k] = v; }); save(); };
+    const f = $('#setForm'); if (!f) return;
+    f.innerHTML = MACHINE_FIELDS.map(fd => fieldHTML(fd, P.settings[fd.k], 's_')).join('');
+    f.oninput = f.onchange = () => {
+      MACHINE_FIELDS.forEach(fd => { const v = readField(fd, 's_', f); if (v !== undefined) P.settings[fd.k] = v; });
+      igf().g50 = P.settings.g50;
+      if (P.settings.tailDia !== '' && P.settings.tailDia != null) igf().tailD = P.settings.tailDia;
+      save();
+    };
   }
 
   // ---------- Danh sách ----------
@@ -92,8 +144,9 @@
   }
   const VI_LVL = { err: 'LỖI', warn: 'Cảnh báo', info: 'Ghi chú' };
   function renderOps() {
-    const ul = $('#opsList'); $('#opsEmpty').style.display = P.ops.length ? 'none' : 'block';
-    $('#opCount').textContent = P.ops.length ? P.ops.length + ' nguyên công' : '';
+    const ul = $('#igfOps') || $('#opsList'); if (!ul) return;
+    const empty = $('#opsEmpty'); if (empty) empty.style.display = P.ops.length ? 'none' : 'block';
+    const count = $('#opCount'); if (count) count.textContent = P.ops.length ? P.ops.length + ' nguyên công' : '';
     let tail = false;
     ul.innerHTML = P.ops.map((op, i) => {
       const m = O.OPS[op.type]; const ws = R ? R.warnings.filter(w => w.op === op.id) : [];
@@ -105,7 +158,7 @@
         <div class="opb"><button data-a="up" aria-label="Lên">↑</button><button data-a="dn" aria-label="Xuống">↓</button><button data-a="ed">Sửa</button><button data-a="cp">Chép</button><button data-a="tg">${op.on === false ? 'Bật' : 'Tắt'}</button><button data-a="rm" aria-label="Xóa">🗑</button></div></li>`;
     }).join('');
     const g = R ? R.warnings.filter(w => !w.op) : [];
-    $('#sumWarn').innerHTML = g.length ? `<ul class="wlist">${g.map(w => `<li class="${w.lvl}">${esc(w.msg)}</li>`).join('')}</ul>` : '';
+    const sum = $('#sumWarn'); if (sum) sum.innerHTML = g.length ? `<ul class="wlist">${g.map(w => `<li class="${w.lvl}">${esc(w.msg)}</li>`).join('')}</ul>` : '';
   }
   function actOp(a, id) {
     const i = P.ops.findIndex(o => o.id === id); if (i < 0) return;
@@ -116,12 +169,8 @@
     if (a === 'tg') P.ops[i].on = P.ops[i].on === false;
     if (a === 'rm') { if (!confirm('Xóa nguyên công này?')) return; P.ops.splice(i, 1); }
     save();
-    if ($('#v-igf').classList.contains('on')) renderIgf();
+    if (flowOn()) renderIgf();
   }
-  $('#opsList').addEventListener('click', e => {
-    const b = e.target.closest('button[data-a]'); if (!b) return;
-    actOp(b.dataset.a, b.closest('li.op').dataset.id);
-  });
 
   // ---------- Bảng chọn / form ----------
   function openSheet(title, html) { $('#sheetTitle').textContent = title; $('#sheetBody').innerHTML = html; $('#sheet').hidden = false; $('#sheetBody').scrollTop = 0; }
@@ -160,34 +209,34 @@
       m.fields.forEach(fd => { const v = readField(fd, 'f_', form); if (v !== undefined) op[fd.k] = v; });
       if (isNew) P.ops.push(op); else { const i = P.ops.findIndex(o => o.id === op.id); if (i >= 0) P.ops[i] = op; }
       selId = op.id; closeSheet(); save(); toast(isNew ? 'Đã thêm: ' + m.name : 'Đã lưu');
-      if ($('#v-igf').classList.contains('on')) renderIgf();
+      if (flowOn()) renderIgf();
     };
   }
 
   // ---------- Mã NC ----------
   function renderCode() {
-    const box = $('#code'); const hl = R.map.find(x => x.id === selId);
+    const box = $('#code'); if (!box || !R) return;
+    const hl = R.map.find(x => x.id === selId);
     box.innerHTML = R.lines.map((l, i) => {
       let c = esc(l) || ' ';
       c = c.replace(/(\([^)]*\))/g, '<span class="cmt">$1</span>').replace(/\b(NAT\d+)\b/g, '<span class="nat">$1</span>').replace(/^(T\d{6})/, '<span class="tl">$1</span>');
       return `<span class="ln${hl && i >= hl.from && i < hl.to ? ' hl' : ''}">${c}</span>`;
     }).join('');
     const ne = R.warnings.filter(w => w.lvl === 'err').length, nw = R.warnings.filter(w => w.lvl === 'warn').length;
-    $('#codeStat').textContent = `${R.lines.length} dòng · ${ne} lỗi · ${nw} cảnh báo`;
-    $('#codeWarn').innerHTML = R.warnings.length ? `<details class="wdet" ${ne ? 'open' : ''}><summary>${ne ? '⛔ ' + ne + ' lỗi, ' : ''}⚠ ${nw} cảnh báo – bấm để xem</summary><ul class="wlist">${R.warnings.map(w => `<li class="${w.lvl}"><b>${w.idx != null ? '#' + (w.idx + 1) + ' ' : ''}${VI_LVL[w.lvl]}:</b> ${esc(w.msg)}</li>`).join('')}</ul></details>` : '';
-    if (!$('#fname').dataset.touched) $('#fname').value = O.asc(P.settings.progName).replace(/[^A-Z0-9]/g, '') || 'PROG';
+    const stat = $('#codeStat'); if (stat) stat.textContent = `${R.lines.length} dòng · ${ne} lỗi · ${nw} cảnh báo`;
+    const warn = $('#codeWarn'); if (warn) warn.innerHTML = R.warnings.length ? `<details class="wdet" ${ne ? 'open' : ''}><summary>${ne ? '⛔ ' + ne + ' lỗi, ' : ''}⚠ ${nw} cảnh báo – bấm để xem</summary><ul class="wlist">${R.warnings.map(w => `<li class="${w.lvl}"><b>${w.idx != null ? '#' + (w.idx + 1) + ' ' : ''}${VI_LVL[w.lvl]}:</b> ${esc(w.msg)}</li>`).join('')}</ul></details>` : '';
+    const fn = $('#fname'); if (fn && !fn.dataset.touched) fn.value = O.asc(P.settings.progName).replace(/[^A-Z0-9]/g, '') || 'PROG';
     const ig = $('#igfCode'); if (ig) ig.innerHTML = box.innerHTML;
     const iw = $('#igfCodeWarn'); if (iw) iw.innerHTML = $('#codeWarn').innerHTML;
     paintGate();
   }
-  $('#fname').oninput = e => { e.target.dataset.touched = 1; };
-  const fileName = () => (O.asc($('#fname').value).replace(/[^A-Z0-9_-]/g, '') || 'PROG') + '.MIN';
+  const fileName = () => (O.asc(($('#fname') && $('#fname').value) || P.settings.progName || '').replace(/[^A-Z0-9_-]/g, '') || 'PROG') + '.MIN';
   function projectSig() { return JSON.stringify({ s: P.settings, o: P.ops, g: P.igf }); }
   let simDoneSig = null;
   function simulated() { return simDoneSig === projectSig(); }
   function exportAllowed() {
     if (simulated()) return true;
-    return confirm('Chưa mô phỏng IGF (hoặc chương trình đã đổi sau lần mô phỏng). Vẫn xuất mã?\n\nNên mở IGF → Mô phỏng, chạy hết đường dao, rồi mới xuất. Trên máy vẫn phải chạy thử không phôi.');
+    return confirm('Chưa mô phỏng (hoặc chương trình đã đổi sau lần mô phỏng). Vẫn xuất mã?\n\nNên mở bước Mô phỏng, chạy hết đường dao, rồi mới xuất. Trên máy vẫn phải chạy thử không phôi.');
   }
   function paintGate() {
     document.querySelectorAll('.simgate').forEach(g => {
@@ -196,21 +245,21 @@
         g.textContent = 'Đã mô phỏng đường dao với dữ liệu hiện tại. Có thể xuất .MIN. Vẫn phải chạy thử không phôi trên máy.';
       } else {
         g.className = 'danger slim simgate';
-        g.textContent = 'Chưa mô phỏng (hoặc đã sửa sau lần mô phỏng). Hãy chạy IGF → Mô phỏng trước khi xuất. Xuất lúc này sẽ hỏi lại.';
+        g.textContent = 'Chưa mô phỏng (hoặc đã sửa sau lần mô phỏng). Hãy chạy bước Mô phỏng trước khi xuất. Xuất lúc này sẽ hỏi lại.';
       }
     });
   }
-  $('#btnCopy').onclick = async () => {
+  async function doCopyCode() {
     if (!exportAllowed()) return;
     try { await navigator.clipboard.writeText(R.text); toast('Đã sao chép ' + R.lines.length + ' dòng'); }
     catch (e) { const ta = document.createElement('textarea'); ta.value = R.text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Đã sao chép'); }
-  };
-  $('#btnDl').onclick = () => {
+  }
+  function doDownloadCode() {
     if (!exportAllowed()) return;
     const b = new Blob([R.text], { type: 'application/octet-stream' }); const a = document.createElement('a');
     a.href = URL.createObjectURL(b); a.download = fileName(); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast('Đã tải ' + fileName());
-  };
-  $('#btnShare').onclick = async () => {
+  }
+  async function doShareCode() {
     if (!exportAllowed()) return;
     try {
       const file = new File([R.text], fileName(), { type: 'text/plain' });
@@ -222,16 +271,16 @@
 
   // ---------- Xem trước ----------
   function renderPrevSel() {
-    const s = $('#prevSel'); s.innerHTML = `<option value="">— Tô sáng nguyên công —</option>` + P.ops.map((o, i) => `<option value="${o.id}" ${o.id === selId ? 'selected' : ''}>${i + 1}. ${esc(O.OPS[o.type].name)}</option>`).join('');
+    const s = $('#prevSel'); if (!s) return;
+    s.innerHTML = `<option value="">— Tô sáng nguyên công —</option>` + P.ops.map((o, i) => `<option value="${o.id}" ${o.id === selId ? 'selected' : ''}>${i + 1}. ${esc(O.OPS[o.type].name)}</option>`).join('');
   }
-  $('#prevSel').onchange = e => { selId = e.target.value || null; drawPreview(); renderCode(); };
   function num(v, d) { return v === '' || v == null || isNaN(Number(v)) ? d : Number(v); }
   function drawPreview() {
     const S = Object.assign({}, O.DEFAULT_SETTINGS, P.settings), D = num(S.stockD, 60), Rr = D / 2, Lg = num(S.stockL, 100);
     const ops = P.ops.filter(o => o.on !== false);
     const fz = ops.find(o => o.type === 'facing'); const zS = fz ? num(fz.zStock, 0) : 0;
     // ---- mặt cắt dọc
-    const cv = $('#cvSide');
+    const cv = $('#cvSide'); if (!cv) { syncPrev3d(); return; }
     syncCanvasBuffer(cv);
     const g = cv.getContext('2d'), Wd = cv.width, Ht = cv.height;
     g.clearRect(0, 0, Wd, Ht); g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, Wd, Ht);
@@ -428,7 +477,7 @@
   }
 
   // ---------- IGF ----------
-  let igfStep = 1, PATH = null, igfDidAuto = false;
+  let PATH = null, igfDidAuto = false;
   const sim = { play: false, mi: 0, u: 0, speed: 1, raf: 0, last: 0 };
   let simView = 'both', simSection = false, prevView = '2d', prevSection = false, simDriven = false;
   const VIEW_KEY = 'okuma_sim3d_colors';
@@ -619,17 +668,18 @@
       canvases.forEach(cv => { cv.style.height = each + 'px'; });
     }
   }
+  function flowOn() { const v = $('#v-flow'); return !!(v && v.classList.contains('on') && activeSetup()); }
+  function simOn() { return flowOn() && igfStep === 5; }
   function fitSimFrame() {
-    const view = $('#v-igf');
-    if (igfStep !== 4 || !view || !view.classList.contains('on')) return;
+    const view = $('#v-flow');
+    if (!simOn() || !view) return;
     const bar = $('#simViewBar');
     const dock = view.querySelector('.simdock');
     const canvases = ['#cvSim', '#cvSim3d'].map(sel => $(sel)).filter(cv => cv && cv.parentElement && !cv.parentElement.hidden);
     fitViewStack(bar, canvases, dock);
   }
   function fitPrevFrame() {
-    const view = $('#v-prev');
-    if (!view || !view.classList.contains('on')) return;
+    if (!simOn()) return;
     const bar = $('#prevViewBar');
     if (prevView === '3d') fitViewStack(bar, [$('#cvPrev3d')].filter(Boolean), document.querySelector('#prevDock3d .simdock'));
     else fitViewStack(bar, [$('#cvSide')].filter(Boolean), document.querySelector('#prevDock2d .simdock'));
@@ -643,7 +693,7 @@
   function scheduleFitPrev() {
     requestAnimationFrame(() => {
       fitPrevFrame();
-      if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
+      if (simOn()) drawPreview();
     });
   }
   function drawSim() {
@@ -651,7 +701,7 @@
     const cv = $('#cvSim');
     if (!cv) {
       paintSimStatus(toolPos());
-      if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
+      if (simOn() && !sim.play) drawPreview();
       return;
     }
     syncCanvasBuffer(cv);
@@ -727,7 +777,7 @@
     }
     paintSimStatus(pos);
     syncSim3d(pos);
-    if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
+    if (simOn() && !sim.play) drawPreview();
   }
   function applySimView() {
     const w2 = $('#sim2dWrap'), w3 = $('#sim3dWrap');
@@ -739,7 +789,7 @@
   function syncSim3d(pos) {
     const V = window.OKU3D; if (!V) return;
     const cv = $('#cvSim3d');
-    const show = !!(cv && simView !== '2d' && igfStep === 4 && $('#v-igf').classList.contains('on'));
+    const show = !!(cv && simView !== '2d' && simOn());
     if (!show) { if (V.current() === cv) V.unmount(); return; }
     const S = Object.assign({}, O.DEFAULT_SETTINGS, P.settings);
     V.mount(cv);
@@ -764,7 +814,7 @@
   function syncPrev3d() {
     const V = window.OKU3D; if (!V) return;
     const cv = $('#cvPrev3d');
-    const show = !!(cv && prevView === '3d' && $('#v-prev').classList.contains('on'));
+    const show = !!(cv && prevView === '3d' && simOn());
     if (!show) { if (V.current() === cv) V.unmount(); return; }
     const path = O.buildToolpath(P);
     const S = Object.assign({}, O.DEFAULT_SETTINGS, P.settings);
@@ -801,14 +851,350 @@
     renderSimChrome(); drawSim();
     scheduleFitSim();
   }
+  const FLOW_STEPS = [
+    [1, 'Thiết lập', 'BLANK/SETUP'],
+    [2, 'Phôi', 'BLANK'],
+    [3, 'Biên dạng', 'TURNING SHAPE'],
+    [4, 'Nguyên công', 'PROCESS DECIDE'],
+    [5, 'Mô phỏng', 'SIMULATION'],
+    [6, 'Xuất code', 'PROGRAM CREATE']
+  ];
+  function stepDone(n) {
+    const ig = igf();
+    if (n === 1) return !!(P.settings.progName && String(P.settings.progName).trim());
+    if (n === 2) return Number(ig.od) > 0 && Number(ig.ol) > 0;
+    if (n === 3) return (ig.elems || []).length > 0;
+    if (n === 4) return P.ops.length > 0;
+    if (n === 5 || n === 6) return simulated();
+    return false;
+  }
+  function paintFlowChrome() {
+    const box = $('#flowSteps');
+    if (box) {
+      box.innerHTML = FLOW_STEPS.map(([n, t]) => {
+        const on = n === igfStep ? ' on' : '';
+        const ok = stepDone(n) ? ' ok' : '';
+        return `<button type="button" data-step="${n}" class="${on}${ok}">${n}${stepDone(n) ? ' ✓' : ''}<br>${esc(t)}</button>`;
+      }).join('');
+    }
+    const back = $('#flowBack'), next = $('#flowNext');
+    if (back) back.disabled = igfStep <= 1;
+    if (next) next.disabled = igfStep >= 6;
+    const fab = $('#fab');
+    if (fab) fab.hidden = !(flowOn() && igfStep === 4);
+  }
+  function setupMeta(s) {
+    const p = (s && s.project) || {};
+    const st = Object.assign({}, O.DEFAULT_SETTINGS, p.settings || {});
+    const ig = Object.assign({}, O.DEFAULT_IGF, p.igf || {});
+    const prog = O.asc(st.progName || '').replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PROG';
+    const od = ig.od != null && ig.od !== '' ? ig.od : st.stockD;
+    const ol = ig.ol != null && ig.ol !== '' ? ig.ol : st.stockL;
+    let when = '';
+    try { when = new Date(s.modified || s.created || Date.now()).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { when = ''; }
+    return { prog: 'O' + prog, mat: ig.material || st.material || '', size: 'Ø' + od + ' × ' + ol, when };
+  }
+  function paintThumb(cv, s) {
+    const g = cv.getContext('2d'); if (!g) return;
+    const W = cv.width, H = cv.height;
+    const p = normalizeProject(s.project);
+    const D = Number(p.igf.od) || Number(p.settings.stockD) || 60;
+    const L = Number(p.igf.ol) || Number(p.settings.stockL) || 80;
+    const Rr = D / 2;
+    g.fillStyle = '#e7eef4'; g.fillRect(0, 0, W, H);
+    const zmin = -L - 10, zmax = 12, rmax = Rr + 8;
+    const sc = Math.min((W - 10) / (zmax - zmin), (H - 10) / (2 * rmax));
+    const X = z => 5 + (z - zmin) * sc, Y = r => H / 2 - r * sc;
+    g.fillStyle = '#90a4ae';
+    g.fillRect(X(zmin), Y(rmax * 0.92), Math.max(1, X(-L) - X(zmin)), Y(-rmax * 0.92) - Y(rmax * 0.92));
+    g.fillStyle = '#cfd8dc';
+    g.fillRect(X(-L), Y(Rr), Math.max(1, X(0) - X(-L)), Y(-Rr) - Y(Rr));
+    g.strokeStyle = '#1565c0'; g.lineWidth = 2;
+    g.strokeRect(X(-L), Y(Rr), Math.max(1, X(0) - X(-L)), Y(-Rr) - Y(Rr));
+  }
+  function renderSetups() {
+    const ul = $('#setupList'); if (!ul) return;
+    const items = LIB.items || [];
+    const empty = $('#setupEmpty'); if (empty) empty.style.display = items.length ? 'none' : 'block';
+    const count = $('#setupCount'); if (count) count.textContent = items.length ? items.length + ' setup' : '';
+    ul.innerHTML = items.map(s => {
+      const m = setupMeta(s);
+      return `<li class="op setupcard${s.id === LIB.active ? ' on' : ''}" data-sid="${esc(s.id)}">
+        <canvas class="thumb" width="192" height="112" data-thumb="${esc(s.id)}"></canvas>
+        <div class="setupmeta">
+          <b>${esc(s.name)}</b>
+          <small>${esc(m.prog)} · ${esc(m.mat)} · ${esc(m.size)}</small>
+          <small>${esc(m.when)}</small>
+          <div class="setupacts">
+            <button type="button" data-sa="open">Mở</button>
+            <button type="button" data-sa="copy">Sao chép</button>
+            <button type="button" data-sa="rename">Đổi tên</button>
+            <button type="button" data-sa="del">Xóa</button>
+            <button type="button" data-sa="exp">Xuất</button>
+          </div>
+        </div>
+      </li>`;
+    }).join('');
+    ul.querySelectorAll('canvas.thumb').forEach(cv => {
+      const s = items.find(x => x.id === cv.dataset.thumb);
+      if (s) paintThumb(cv, s);
+    });
+  }
+  function paintHeader() {
+    const s = activeSetup();
+    const flow = $('#v-flow') && $('#v-flow').classList.contains('on') && s;
+    const step = FLOW_STEPS[Math.max(0, Math.min(5, igfStep - 1))];
+    const title = $('#headTitle'), sub = $('#headSub');
+    if (flow) {
+      const m = setupMeta(s);
+      if (title) title.textContent = s.name;
+      if (sub) sub.textContent = m.prog + ' · ' + step[1] + ' (' + step[2] + ')';
+      const fn = $('#flowName'); if (fn) fn.textContent = s.name;
+    } else {
+      if (title) title.textContent = 'Okuma LB3000EX II';
+      if (sub) sub.textContent = 'OSP-P300L · Quản lý setup';
+    }
+  }
+  function showView(id) {
+    if (activeSetup()) persistLib();
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.v === id));
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === id));
+    if (id !== 'v-flow') stopSim();
+    if (window.OKU3D) {
+      const cur = window.OKU3D.current();
+      if (id !== 'v-flow' && cur && (cur.id === 'cvSim3d' || cur.id === 'cvPrev3d')) window.OKU3D.unmount();
+    }
+    if (id === 'v-setup') renderSetups();
+    if (id === 'v-flow') {
+      const work = $('#flowWork'), empty = $('#flowEmpty');
+      if (activeSetup()) {
+        if (work) work.hidden = false;
+        if (empty) empty.style.display = 'none';
+        renderIgf();
+      } else {
+        if (work) work.hidden = true;
+        if (empty) empty.style.display = 'block';
+        const fab = $('#fab'); if (fab) fab.hidden = true;
+      }
+    }
+    paintHeader();
+    paintFlowChrome();
+    window.scrollTo(0, 0);
+  }
+  function openSetup(id, step) {
+    const s = LIB.items.find(x => x.id === id); if (!s) return;
+    LIB.active = id;
+    P = normalizeProject(s.project);
+    igfStep = step || s.step || 1;
+    if (igfStep < 1 || igfStep > 6) igfStep = 1;
+    simDoneSig = null;
+    persistLib();
+    showView('v-flow');
+  }
+  function beginSetup(name, project, step) {
+    const s = makeSetup(name, project);
+    s.step = step || 1;
+    LIB.items.unshift(s);
+    LIB.active = s.id;
+    P = normalizeProject(s.project);
+    igfStep = s.step;
+    simDoneSig = null;
+    persistLib();
+    showView('v-flow');
+    return s;
+  }
+  function startTest1() {
+    const ig = O.igfTutorial();
+    const project = {
+      settings: Object.assign({}, O.DEFAULT_SETTINGS, {
+        progName: 'TEST1', comment: 'IGF TEST1',
+        stockD: ig.od, stockL: ig.ol, material: ig.material,
+        g50: ig.g50, jawLen: ig.jawL2, jawOd: ig.jawD3, tailDia: ig.tailD
+      }),
+      ops: [],
+      igf: ig
+    };
+    const s = makeSetup('TEST1', project);
+    s.step = 3;
+    LIB.items.unshift(s);
+    LIB.active = s.id;
+    P = normalizeProject(s.project);
+    igfStep = 3;
+    simDoneSig = null;
+    applyIgf();
+    persistLib();
+    showView('v-flow');
+    toast('Đã tạo TEST1');
+  }
+  function downloadJson(obj, name) {
+    const b = new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  function askName(title, value, okLabel, onOk) {
+    openSheet(title, `<label class="fld"><span>Tên setup</span><input id="nameAsk" type="text" value="${esc(value)}"></label><div class="btns"><button type="button" class="b1" id="nameOk">${esc(okLabel || 'Lưu')}</button></div>`);
+    const inp = $('#nameAsk');
+    if (inp) { inp.focus(); inp.select(); }
+    $('#nameOk').onclick = () => {
+      const nm = ($('#nameAsk').value || '').trim();
+      if (!nm) { alert('Nhập tên setup'); return; }
+      closeSheet();
+      onOk(nm);
+    };
+  }
+  function copySetup(id) {
+    if (activeSetup()) persistLib();
+    const src = LIB.items.find(s => s.id === id); if (!src) return;
+    const snap = JSON.parse(JSON.stringify(src.project));
+    askName('Sao chép setup', src.name + ' (bản sao)', 'Sao chép', nm => {
+      const s = makeSetup(nm, snap);
+      const base = O.asc(nm).replace(/[^A-Z0-9]/g, '').slice(0, 8);
+      if (base && s.project.settings) s.project.settings.progName = base;
+      if (s.project.settings) s.project.settings.comment = nm;
+      LIB.items.unshift(s);
+      try { localStorage.setItem(LIB_KEY, JSON.stringify(LIB)); } catch (e) { /* bộ nhớ đầy */ }
+      renderSetups();
+      toast('Đã sao chép');
+    });
+  }
+  function renameSetup(id) {
+    const s = LIB.items.find(x => x.id === id); if (!s) return;
+    askName('Đổi tên setup', s.name, 'Đổi tên', nm => {
+      s.name = nm;
+      s.modified = Date.now();
+      try { localStorage.setItem(LIB_KEY, JSON.stringify(LIB)); } catch (e) { /* bộ nhớ đầy */ }
+      renderSetups();
+      paintHeader();
+      toast('Đã đổi tên');
+    });
+  }
+  function deleteSetup(id) {
+    const s = LIB.items.find(x => x.id === id); if (!s) return;
+    if (!confirm('Xóa setup “' + s.name + '”?')) return;
+    LIB.items = LIB.items.filter(x => x.id !== id);
+    if (LIB.active === id) {
+      LIB.active = null;
+      P = normalizeProject(null);
+      igfStep = 1;
+      simDoneSig = null;
+    }
+    try { localStorage.setItem(LIB_KEY, JSON.stringify(LIB)); } catch (e) { /* bộ nhớ đầy */ }
+    renderSetups();
+    toast('Đã xóa');
+  }
+  function exportOne(id) {
+    if (activeSetup()) persistLib();
+    const s = LIB.items.find(x => x.id === id); if (!s) return;
+    const safe = O.asc(s.name).replace(/[^A-Z0-9_-]/g, '') || 'SETUP';
+    downloadJson({ v: 1, name: s.name, step: s.step, project: s.project }, safe + '.json');
+    toast('Đã xuất ' + s.name);
+  }
+  function exportAll() {
+    if (activeSetup()) persistLib();
+    downloadJson({
+      v: 1,
+      items: LIB.items.map(s => ({ name: s.name, step: s.step, project: s.project }))
+    }, 'okuma-setups.json');
+    toast('Đã xuất ' + LIB.items.length + ' setup');
+  }
+  function importPayload(j) {
+    let list = [];
+    if (j && Array.isArray(j.items)) {
+      list = j.items.map(it => {
+        const src = it.project || { settings: it.settings, ops: it.ops, igf: it.igf };
+        const s = makeSetup(it.name || 'Nhập', src);
+        if (it.step) s.step = it.step;
+        return s;
+      });
+    } else if (j && j.project && (j.project.ops || j.project.settings || j.project.igf)) {
+      const s = makeSetup(j.name || 'Nhập', j.project);
+      if (j.step) s.step = j.step;
+      list = [s];
+    } else if (j && Array.isArray(j.ops)) {
+      const nm = (j.settings && (j.settings.comment || j.settings.progName)) || 'Nhập';
+      list = [makeSetup(nm, j)];
+    } else throw new Error('Tệp không hợp lệ');
+    list.forEach(s => LIB.items.unshift(s));
+    try { localStorage.setItem(LIB_KEY, JSON.stringify(LIB)); } catch (e) { /* bộ nhớ đầy */ }
+    return list.length;
+  }
+  function syncIgfToSettings() {
+    const ig = igf();
+    if (igfStep === 1) {
+      if (ig.jawL2 !== '' && ig.jawL2 != null) P.settings.jawLen = Number(ig.jawL2) || P.settings.jawLen;
+      if (ig.jawD3 !== '' && ig.jawD3 != null) P.settings.jawOd = Number(ig.jawD3) || P.settings.jawOd;
+      if (ig.useCenter && P.settings.tail === 'none') P.settings.tail = 'quill';
+      if (ig.tailD !== '' && ig.tailD != null) P.settings.tailDia = Number(ig.tailD) || P.settings.tailDia;
+    }
+    if (igfStep === 2) {
+      if (ig.od !== '' && ig.od != null) P.settings.stockD = Number(ig.od) || P.settings.stockD;
+      if (ig.ol !== '' && ig.ol != null) P.settings.stockL = Number(ig.ol) || P.settings.stockL;
+      if (ig.material) P.settings.material = ig.material;
+    }
+  }
+  function gripHTML(ig) {
+    return `<h3>Kẹp phôi (ID/OD GRIP)</h3>
+      <label class="fld"><span>Cách kẹp (ID/OD GRIP)</span><select data-k="grip"><option value="od" ${ig.grip !== 'id' ? 'selected' : ''}>Kẹp ngoài (OUTSIDE)</option><option value="id" ${ig.grip === 'id' ? 'selected' : ''}>Kẹp trong (INSIDE)</option></select></label>
+      ${numInp('jawL2', ig.jawL2, 'Chiều dài chấu L2 (JAW SIZE L2)')}
+      ${numInp('jawD3', ig.jawD3, ig.grip === 'id' ? 'Đường kính kẹp (L3)' : 'Đường kính chấu D3')}
+      <label class="chk"><input type="checkbox" data-k="useCenter" ${ig.useCenter ? 'checked' : ''}> Dùng chống tâm (USE CENTER) — khoan tâm rồi tiến ụ (TS ADVANCE, M56)</label>
+      ${ig.useCenter ? numInp('tailD', ig.tailD, 'Đường kính vùng mũi tâm (DIAMETER D)') : ''}
+      <div class="grid2">${numInp('roughT', ig.roughT, 'Dao thô T (ROUGH OD)')}${numInp('finishT', ig.finishT, 'Dao tinh T (FINISH OD)')}</div>`;
+  }
+  function previewHTML() {
+    return `<h3>Xem trước</h3>
+      <p class="hint">Mặt cắt dọc và mặt đầu của các nguyên công. 3D dùng cùng đường dao với mô phỏng.</p>
+      <div class="simbar" id="prevViewBar">
+        <button type="button" class="b2${prevView === '2d' ? ' on' : ''}" id="prev2d">2D</button>
+        <button type="button" class="b2${prevView === '3d' ? ' on' : ''}" id="prev3d">3D</button>
+      </div>
+      <label class="fld"><span>Tô sáng nguyên công</span><select id="prevSel"></select></label>
+      <div id="prev2dWrap"${prevView === '3d' ? ' hidden' : ''}>
+        <div class="cvwrap"><div class="cvt">Mặt cắt dọc</div><canvas id="cvSide" width="760" height="320"></canvas></div>
+        <div id="prevDock2d"></div>
+        <div class="cvwrap"><div class="cvt">Mặt đầu</div><canvas id="cvFace" width="760" height="320"></canvas></div>
+      </div>
+      <div id="prev3dWrap"${prevView === '3d' ? '' : ' hidden'}>
+        <div class="cvwrap">
+          <div class="cvt">Xem trước 3D</div>
+          <canvas id="cvPrev3d" width="760" height="480"></canvas>
+          <div class="simbar">
+            <button type="button" class="b2${prevSection ? ' on' : ''}" id="prevSection">Mặt cắt</button>
+            <button type="button" class="b2" id="prevCam">Đặt lại góc nhìn</button>
+          </div>
+        </div>
+        <div id="prevDock3d"></div>
+      </div>`;
+  }
+  function goStep(n) {
+    n = Math.max(1, Math.min(6, Number(n) || 1));
+    if (n !== 5) stopSim();
+    igfStep = n;
+    const s = activeSetup(); if (s) s.step = n;
+    persistLib();
+    renderIgf();
+    const box = $('#flowSteps');
+    if (box) box.scrollIntoView({ block: 'start', inline: 'nearest' });
+  }
   function renderIgf() {
     const root = $('#igfRoot'); if (!root) return;
-    if (window.OKU3D && window.OKU3D.current() === $('#cvSim3d')) window.OKU3D.unmount();
+    if (window.OKU3D) {
+      const cur = window.OKU3D.current();
+      if (cur && (cur.id === 'cvSim3d' || cur.id === 'cvPrev3d')) window.OKU3D.unmount();
+    }
     const ig = igf(), M = O.matOf(ig);
-    const steps = [['1', 'Phôi'], ['2', 'Hình'], ['3', 'Nguyên công'], ['4', 'Mô phỏng'], ['5', 'Tạo mã']];
-    let body = '';
+    const step = FLOW_STEPS[igfStep - 1];
+    let body = `<h3>${step[0]}. ${esc(step[1])} (${esc(step[2])})</h3>`;
     if (igfStep === 1) {
-      body = `<p class="hint">Bước này là màn BLANK/SETUP của IGF: vật liệu (MATERIAL), hình phôi (SHAPE), mốc Z (ZERO POINT REFERENCE) và kẹp (ID/OD GRIP). Số liệu cắt là giá trị xưởng — sách chỉ liệt kê các mục, không in bảng số của máy.</p>
+      body += `<p class="hint">BLANK/SETUP: máy, bảng dao, mâm, ụ động và cách kẹp. Đường kính, chiều dài và vật liệu phôi nằm ở bước Phôi (BLANK).</p>
+        <form id="setForm" class="form" autocomplete="off"></form>
+        <form id="igfForm" class="form" autocomplete="off">${gripHTML(ig)}</form>`;
+    } else if (igfStep === 2) {
+      body += `<p class="hint">Phôi (BLANK): vật liệu (MATERIAL), hình phôi (SHAPE), kích thước và mốc Z (ZERO POINT REFERENCE). Z xuất ra chương trình lấy mặt phải của phôi làm Z0, Z âm về phía mâm.</p>
+        <form id="igfForm" class="form" autocomplete="off">
         <label class="fld"><span>Vật liệu (MATERIAL)</span><select data-k="material">${Object.keys(O.MATERIALS).map(k => `<option ${ig.material === k ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
         <label class="fld"><span>Hình phôi (SHAPE)</span><select data-k="blankShape"><option value="round" ${ig.blankShape !== 'uniform' ? 'selected' : ''}>Thanh tròn (ROUND BAR)</option><option value="uniform" ${ig.blankShape === 'uniform' ? 'selected' : ''}>Phôi đều dư (UNIFORM STOCK)</option></select></label>
         ${numInp('od', ig.od, 'Đường kính ngoài, Ø (OUTSIDE DIA. OD)')}
@@ -819,31 +1205,27 @@
         ${ig.blankShape === 'uniform' ? numInp('uniformH', ig.uniformH, 'Dư đều quanh thành phẩm (STCK RMV H)') : ''}
         <label class="fld"><span>Mốc Z (ZERO POINT REFERENCE)</span><select data-k="zeroRef"><option value="left" ${ig.zeroRef !== 'right' ? 'selected' : ''}>Mặt trái — phía mâm (LEFT FACE)</option><option value="right" ${ig.zeroRef === 'right' ? 'selected' : ''}>Mặt phải — phía ụ (RIGHT FACE)</option></select></label>
         ${numInp('zeroPos', ig.zeroPos, 'Vị trí mốc so với mặt chuẩn (ZERO POINT POSITION)')}
-        <p class="small muted">Z xuất ra chương trình lấy mặt phải của phôi làm Z0, Z âm về phía mâm — cùng quy ước tab Nguyên công.</p>
-        ${numInp('g50', ig.g50, 'Tốc độ trục chính tối đa (SPINDLE MAX SPEED) → G50')}
-        <label class="fld"><span>Cách kẹp (ID/OD GRIP)</span><select data-k="grip"><option value="od" ${ig.grip !== 'id' ? 'selected' : ''}>Kẹp ngoài (OUTSIDE)</option><option value="id" ${ig.grip === 'id' ? 'selected' : ''}>Kẹp trong (INSIDE)</option></select></label>
-        ${numInp('jawL2', ig.jawL2, 'Chiều dài chấu L2 (JAW SIZE L2)')}
-        ${numInp('jawD3', ig.jawD3, ig.grip === 'id' ? 'Đường kính kẹp (L3)' : 'Đường kính chấu D3')}
-        <label class="chk"><input type="checkbox" data-k="useCenter" ${ig.useCenter ? 'checked' : ''}> Dùng chống tâm (USE CENTER) — khoan tâm rồi tiến ụ (TS ADVANCE, M56)</label>
-        ${ig.useCenter ? numInp('tailD', ig.tailD, 'Đường kính vùng mũi tâm (DIAMETER D)') : ''}
-        <div class="grid2">${numInp('roughT', ig.roughT, 'Dao thô T (ROUGH OD)')}${numInp('finishT', ig.finishT, 'Dao tinh T (FINISH OD)')}</div>`;
-    } else if (igfStep === 2) {
+        </form>`;
+    } else if (igfStep === 3) {
       const pv = O.shapePreview(ig);
-      body = `<p class="hint">Định nghĩa biên dạng tinh (TURNING SHAPE) một nét, như IGF: điểm đầu (START PT. SX, SZ), chiều (DEF. DIR.), rồi FACE / TAPER / LONG / C-CHF / R-CHF. Vát và bo nằm giữa hai đoạn thẳng. Ví dụ trong sách LE32-239 mục 3 (phôi S45C, Ø100×82).</p>
+      body += `<p class="hint">Biên dạng tinh (TURNING SHAPE), một nét: điểm đầu (START PT. SX, SZ), chiều (DEF. DIR.), rồi FACE / TAPER / LONG / C-CHF / R-CHF. Vát và bo nằm giữa hai đoạn thẳng. Ví dụ sách LE32-239 mục 3 (phôi S45C, Ø100×82) tạo bằng nút ví dụ trên màn Quản lý setup.</p>
+        <form id="igfForm" class="form" autocomplete="off">
         <div class="grid2">${numInp('sx', ig.sx, 'Điểm đầu X, Ø (START PT. SX)')}${numInp('sz', ig.sz, 'Điểm đầu Z (START PT. SZ)')}</div>
         <label class="fld"><span>Chiều định nghĩa (DEF. DIR.)</span><select data-k="dir"><option ${ig.dir !== 'CW' ? 'selected' : ''}>CCW</option><option ${ig.dir === 'CW' ? 'selected' : ''}>CW</option></select></label>
         <div class="cvwrap"><div class="cvt">Phôi (xám) và biên dạng tinh (xanh) · Z0 ở mặt phải</div><canvas id="igfCv" width="720" height="280"></canvas></div>
         ${(pv.notes || []).map(n => `<p class="opw warn">⚠ ${esc(n)}</p>`).join('')}
-        <div id="elList">${(ig.elems || []).map(elCard).join('') || '<p class="empty">Chưa có đoạn nào. Thêm FACE, LONG… hoặc nạp ví dụ trong sách.</p>'}</div>
-        <div class="typegrid igfadd">${Object.keys(EL_VI).map(k => `<button type="button" class="typebtn" data-addel="${k}">${esc(EL_VI[k])}</button>`).join('')}</div>`;
-    } else if (igfStep === 3) {
+        <div id="elList">${(ig.elems || []).map(elCard).join('') || '<p class="empty">Chưa có đoạn nào. Thêm FACE, LONG…</p>'}</div>
+        <div class="typegrid igfadd">${Object.keys(EL_VI).map(k => `<button type="button" class="typebtn" data-addel="${k}">${esc(EL_VI[k])}</button>`).join('')}</div>
+        </form>`;
+    } else if (igfStep === 4) {
       if (P.ops.length) igfDidAuto = true;
       else if ((ig.elems || []).length && !igfDidAuto) {
         const d = applyIgf();
-        if (d.ops && d.ops.length) { igfDidAuto = true; save(); }
+        if (d.ops && d.ops.length) { igfDidAuto = true; persistLib(); }
       }
       const notes = O.decideProcesses(ig).notes || [];
-      body = `<p class="hint">PROCESS DECIDE dùng chung danh sách với tab Nguyên công. Sửa, thêm, xóa, nhân bản, đảo thứ tự, bật/tắt, đổi dao và chế độ cắt — chương trình và mô phỏng làm lại từ danh sách này. “Quyết định lại” ghi đè danh sách từ biên dạng.</p>
+      body += `<p class="hint">PROCESS DECIDE là danh sách nguyên công của setup này, gồm cả nguyên công thêm tay (dừng, mã thô, dao động lực). Sửa, thêm, xóa, nhân bản, đảo thứ tự, bật hoặc tắt. “Quyết định lại” ghi đè danh sách từ biên dạng.</p>
+        <form id="igfForm" class="form" autocomplete="off">
         <h3>Chế độ cắt ${esc(ig.material)} (MATERIAL DATA)</h3>
         <div class="grid2">
           ${numInp('vr', M.vr, 'Vc thô m/ph (CUT. SPEED VR)')}
@@ -857,15 +1239,13 @@
         <div class="btns"><button type="button" class="b2" id="igfRedecide">Quyết định lại từ biên dạng</button><button type="button" class="b1" id="igfAdd">＋ Thêm nguyên công</button></div>
         ${notes.map(n => `<p class="hint">⚠ ${esc(n)}</p>`).join('')}
         <h3>Nguyên công (${P.ops.length})</h3>
-        <ol class="ops" id="igfOps">${P.ops.map((op, i) => {
-          const m = O.OPS[op.type]; const ws = R ? R.warnings.filter(w => w.op === op.id) : [];
-          const cls = ws.some(w => w.lvl === 'err') ? 'err' : ws.some(w => w.lvl === 'warn') ? 'wrn' : '';
-          return `<li class="op ${cls} ${op.on === false ? 'off' : ''}" data-id="${op.id}"><div class="oph"><span class="opn">${i + 1}</span><div class="opt"><b>${m.icon} ${esc(m.name)}</b><small>${esc(summary(op))}</small></div></div>
-            ${ws.length ? `<ul class="opw">${ws.map(w => `<li class="${w.lvl}">${w.lvl === 'err' ? '⛔' : '⚠'} ${esc(w.msg)}</li>`).join('')}</ul>` : ''}
-            <div class="opb"><button type="button" data-a="up" aria-label="Lên">↑</button><button type="button" data-a="dn" aria-label="Xuống">↓</button><button type="button" data-a="ed">Sửa</button><button type="button" data-a="cp">Chép</button><button type="button" data-a="tg">${op.on === false ? 'Bật' : 'Tắt'}</button><button type="button" data-a="rm" aria-label="Xóa">🗑</button></div></li>`;
-        }).join('') || '<li class="empty">Chưa có nguyên công. Thêm tay hoặc quyết định từ biên dạng.</li>'}</ol>`;
-    } else if (igfStep === 4) {
-      body = `<p class="hint">Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. Phôi tròn bóc dần theo cùng đường dao. Một ngón xoay theo tay, hai ngón vừa phóng vừa kéo.</p>
+        <div id="sumWarn"></div>
+        <ol class="ops" id="igfOps"></ol>
+        </form>`;
+    } else if (igfStep === 5) {
+      body += `<p class="hint">Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. Phôi tròn bóc dần theo cùng đường dao. Một ngón xoay theo tay, hai ngón vừa phóng vừa kéo.</p>
+        <div class="simgate danger slim"></div>
+        <form id="igfForm" class="form" autocomplete="off">
         <div class="simbar" id="simViewBar">
           <button type="button" class="b2${simView === '2d' ? ' on' : ''}" id="sim2d">2D</button>
           <button type="button" class="b2${simView === '3d' ? ' on' : ''}" id="sim3d">3D</button>
@@ -888,29 +1268,48 @@
         ${colorPanelHTML()}
         <p class="small muted">3D ước lượng tiện, rãnh, cắt đứt, khoan/tiện trong, ren và dao động lực. Không thay chạy thử không phôi trên máy.</p>
         <div class="legend"><span class="lg h">Chạy nhanh</span><span class="lg p">Chạy dao</span><span class="lg f">Biên dạng tinh</span><span class="lg t">Chống tâm</span></div>
-        <div id="simHits"></div>`;
+        <div id="simHits"></div>
+        ${previewHTML()}
+        </form>`;
     } else {
-      body = `<p class="hint">PROGRAM CREATE: mã dưới đây là compile() của đúng danh sách nguyên công đang dùng (tab Nguyên công). Xuất .MIN sau khi mô phỏng; nếu chưa chạy hết, ứng dụng sẽ hỏi lại.</p>
+      body += `<p class="hint">PROGRAM CREATE: mã dưới đây là compile() của đúng danh sách nguyên công trong setup. Xuất .MIN sau khi mô phỏng; nếu chưa chạy hết, ứng dụng sẽ hỏi lại.</p>
         <div class="simgate danger slim"></div>
-        <p>Phôi Ø${esc(ig.od)} × ${esc(ig.ol)} ${esc(ig.material)} · ${P.ops.length} nguyên công · tệp theo tên chương trình trong Thiết lập.</p>
+        <form id="igfForm" class="form" autocomplete="off">
+        <p>Phôi Ø${esc(ig.od)} × ${esc(ig.ol)} ${esc(ig.material)} · ${P.ops.length} nguyên công.</p>
+        <label class="fld"><span>Tên tệp .MIN</span><input id="fname" type="text" value="${esc(O.asc(P.settings.progName).replace(/[^A-Z0-9]/g, '') || 'PROG')}"></label>
         <div class="btns">
-          <button type="button" class="b1" id="igfCopy">Sao chép</button>
+          <button type="button" class="b1" id="btnCopy">Sao chép</button>
           <button type="button" class="b1" id="igfDl">Tải .MIN</button>
-          <button type="button" class="b2" id="igfGoOps">Mở tab Nguyên công</button>
+          <button type="button" class="b2" id="btnShare">Chia sẻ</button>
         </div>
-        <div id="igfCodeWarn"></div>
-        <pre id="igfCode" class="code"></pre>`;
+        <p id="codeStat" class="small muted"></p>
+        <div id="codeWarn"></div>
+        <pre id="code" class="code"></pre>
+        </form>`;
     }
-    root.innerHTML = `<div class="igfsteps">${steps.map(([n, t]) => `<button type="button" data-step="${n}" class="${Number(n) === igfStep ? 'on' : ''}">${n} ${esc(t)}</button>`).join('')}</div>
-      <div class="btns"><button type="button" class="b2" id="igfDemo">Nạp ví dụ trong sách (TEST1)</button></div>
-      <form id="igfForm" class="form" autocomplete="off">${body}</form>`;
-    if (igfStep === 2) drawIgf();
+    root.innerHTML = body;
+    R = O.compile(P);
+    paintFlowChrome();
+    paintHeader();
+    if (igfStep === 1) renderSettings();
+    if (igfStep === 3) drawIgf();
+    if (igfStep === 4) renderOps();
     paintColorInputs();
     paintPathControls();
-    if (igfStep === 4) { applySimView(); enterSim(true); }
-    if (igfStep === 5 && R) renderCode();
+    if (igfStep === 5) {
+      const d2 = $('#prevDock2d'); if (d2) d2.innerHTML = simDockHTML(false);
+      const d3 = $('#prevDock3d'); if (d3) d3.innerHTML = simDockHTML(false);
+      paintPathControls();
+      applySimView();
+      applyPrevView();
+      renderPrevSel();
+      enterSim(true);
+    }
+    if (igfStep === 6 && R) renderCode();
     else paintGate();
     const form = $('#igfForm');
+    if (!form) return;
+    form.onsubmit = ev => ev.preventDefault();
     const read = () => {
       form.querySelectorAll('[data-k]').forEach(el => {
         const k = el.dataset.k;
@@ -919,105 +1318,130 @@
         else if (['vr', 'fr', 'dx', 'lx', 'lz', 'vf', 'ff'].includes(k)) { ig().mat = Object.assign({}, O.matOf(ig()), ig().mat || {}); ig().mat[k] = el.value === '' ? '' : Number(el.value); }
         else ig()[k] = el.value === '' ? '' : Number(el.value);
       });
-      if (igfStep === 2) form.querySelectorAll('.el').forEach(card => {
+      if (igfStep === 3) form.querySelectorAll('.el').forEach(card => {
         const e = ig().elems[Number(card.dataset.i)]; if (!e) return;
         card.querySelectorAll('[data-k]').forEach(inp => { e[inp.dataset.k] = inp.value === '' ? '' : Number(inp.value); });
       });
     };
     form.oninput = form.onchange = ev => {
-      if (ev.target && ev.target.hasAttribute('data-simspd')) {
-        sim.speed = Number(ev.target.value) || 1;
+      const t = ev.target;
+      if (t && t.id === 'fname') { t.dataset.touched = '1'; return; }
+      if (t && t.id === 'prevSel') { selId = t.value || null; drawPreview(); return; }
+      if (t && t.hasAttribute('data-simspd')) {
+        sim.speed = Number(t.value) || 1;
         document.querySelectorAll('[data-simspdlab]').forEach(el => { el.textContent = sim.speed + '×'; });
-        document.querySelectorAll('[data-simspd]').forEach(el => { if (el !== ev.target) el.value = String(sim.speed); });
+        document.querySelectorAll('[data-simspd]').forEach(el => { if (el !== t) el.value = String(sim.speed); });
         return;
       }
-      if (ev.target && ev.target.hasAttribute('data-simlw')) {
+      if (t && t.hasAttribute('data-simlw')) {
         const v = loadView();
-        v.linePx = Number(ev.target.value) || 1.25;
-        saveView(v, ev.target);
+        v.linePx = Number(t.value) || 1.25;
+        saveView(v, t);
         if ($('#cvSim')) drawSim();
-        if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
         return;
       }
-      if (ev.target && ev.target.dataset && ev.target.dataset.k && igfStep === 2 && ev.target.closest('.el')) {
+      if (t && (t.dataset.c3 || t.hasAttribute('data-c3inv'))) return;
+      if (t && t.dataset && t.dataset.k && igfStep === 3 && t.closest('.el')) {
         read(); save(); drawIgf(); return;
       }
-      read(); save();
-      if (ev.target && ['blankId', 'blankShape', 'grip', 'useCenter', 'material'].includes(ev.target.dataset.k)) renderIgf();
-      else if (igfStep === 2) drawIgf();
+      read();
+      syncIgfToSettings();
+      save();
+      if (t && ['blankId', 'blankShape', 'grip', 'useCenter'].includes(t.dataset.k)) renderIgf();
+      else if (igfStep === 3) drawIgf();
     };
   }
-  const igfRootClick = e => {
-    const st = e.target.closest('[data-step]'); if (st) { if (Number(st.dataset.step) !== 4) stopSim(); igfStep = Number(st.dataset.step); renderIgf(); return; }
-    if (e.target.id === 'igfDemo') {
-      if (P.ops.length && !confirm('Thay danh sách nguyên công bằng ví dụ TEST1 trong sách?')) return;
-      P.igf = O.igfTutorial();
-      P.settings.progName = 'TEST1';
-      P.settings.comment = 'IGF TEST1';
-      const d = applyIgf();
-      igfStep = 2; save(); renderIgf(); toast('Đã nạp TEST1 (' + ((d && d.ops) ? d.ops.length : 0) + ' nguyên công)'); return;
-    }
-    const add = e.target.closest('[data-addel]'); if (add) { igf().elems = igf().elems || []; igf().elems.push({ t: add.dataset.addel }); save(); renderIgf(); return; }
-    const del = e.target.closest('[data-del]'); if (del) { igf().elems.splice(Number(del.dataset.del), 1); save(); renderIgf(); return; }
-    const opb = e.target.closest('#igfOps button[data-a]');
+  const flowClick = e => {
+    if (e.target.id === 'flowToSetup' || (e.target.closest && e.target.closest('#flowToSetup'))) { showView('v-setup'); return; }
+    if (e.target.id === 'flowBack') { goStep(igfStep - 1); return; }
+    if (e.target.id === 'flowNext') { goStep(igfStep + 1); return; }
+    const st = e.target.closest && e.target.closest('#flowSteps [data-step]');
+    if (st) { goStep(Number(st.dataset.step)); return; }
+    const add = e.target.closest && e.target.closest('[data-addel]');
+    if (add) { igf().elems = igf().elems || []; igf().elems.push({ t: add.dataset.addel }); save(); renderIgf(); return; }
+    const del = e.target.closest && e.target.closest('[data-del]');
+    if (del) { igf().elems.splice(Number(del.dataset.del), 1); save(); renderIgf(); return; }
+    const opb = e.target.closest && e.target.closest('#igfOps button[data-a]');
     if (opb) { actOp(opb.dataset.a, opb.closest('li.op').dataset.id); return; }
     if (e.target.id === 'igfRedecide') {
       const d0 = O.decideProcesses(igf());
-      if (!d0.ops.length) { alert('Chưa đủ biên dạng ở bước Hình.'); return; }
+      if (!d0.ops.length) { alert('Chưa đủ biên dạng ở bước Biên dạng.'); return; }
       if (P.ops.length && !confirm('Ghi đè danh sách nguyên công bằng kết quả quyết định từ biên dạng?')) return;
       const d = applyIgf(); save(); renderIgf(); toast('Đã quyết định ' + d.ops.length + ' nguyên công'); return;
     }
-    if (e.target.id === 'igfAdd') { $('#fab').click(); return; }
+    if (e.target.id === 'igfAdd') { $('#fab').hidden = false; $('#fab').click(); return; }
     if (e.target.id === 'sim2d' || e.target.id === 'sim3d' || e.target.id === 'simBoth') {
       simView = e.target.id === 'sim2d' ? '2d' : e.target.id === 'sim3d' ? '3d' : 'both';
       applySimView(); drawSim(); scheduleFitSim(); return;
     }
     if (e.target.id === 'simSection') { simSection = !simSection; applySimView(); drawSim(); return; }
     if (e.target.id === 'simCam') { if (window.OKU3D) window.OKU3D.resetCam(); return; }
-    if (e.target.id === 'igfCopy') { $('#btnCopy').click(); return; }
-    if (e.target.id === 'igfDl') { $('#btnDl').click(); return; }
-    if (e.target.id === 'igfGoOps') { document.querySelector('.tabs button[data-v="v-ops"]').click(); }
+    if (e.target.id === 'prev2d') { prevView = '2d'; applyPrevView(); drawPreview(); scheduleFitPrev(); return; }
+    if (e.target.id === 'prev3d') { prevView = '3d'; applyPrevView(); drawPreview(); scheduleFitPrev(); return; }
+    if (e.target.id === 'prevSection') { prevSection = !prevSection; applyPrevView(); drawPreview(); return; }
+    if (e.target.id === 'prevCam') { if (window.OKU3D) window.OKU3D.resetCam(); return; }
+    if (e.target.id === 'btnCopy') { doCopyCode(); return; }
+    if (e.target.id === 'btnDl' || e.target.id === 'igfDl') { doDownloadCode(); return; }
+    if (e.target.id === 'btnShare') { doShareCode(); return; }
   };
 
-  // ---------- chung ----------
   function refresh() {
     R = O.compile(P); renderOps(); renderCode(); renderPrevSel();
-    if ($('#v-prev').classList.contains('on')) drawPreview();
-    if (igfStep === 4 && $('#v-igf').classList.contains('on') && !sim.play && $('#cvSim')) {
-      const prev = sim.mi;
+    paintFlowChrome();
+    paintHeader();
+    if (simOn() && !sim.play) drawPreview();
+    if (igfStep === 5 && flowOn() && !sim.play && $('#cvSim')) {
+      const prevMi = sim.mi;
       PATH = O.buildToolpath(P);
-      if (prev > PATH.moves.length) sim.mi = PATH.moves.length;
+      if (prevMi > PATH.moves.length) sim.mi = PATH.moves.length;
       renderSimChrome(); drawSim();
     }
   }
-  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-    document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === b.dataset.v));
-    $('#fab').style.display = b.dataset.v === 'v-ops' ? '' : 'none';
-    if (b.dataset.v !== 'v-igf') stopSim();
-    if (window.OKU3D) {
-      if (b.dataset.v !== 'v-igf' && window.OKU3D.current() === $('#cvSim3d')) window.OKU3D.unmount();
-      if (b.dataset.v !== 'v-prev' && window.OKU3D.current() === $('#cvPrev3d')) window.OKU3D.unmount();
-    }
-    if (b.dataset.v === 'v-prev') { drawPreview(); scheduleFitPrev(); }
-    if (b.dataset.v === 'v-igf') renderIgf();
-    window.scrollTo(0, 0);
-  });
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showView(b.dataset.v));
   $('#warnHide').onclick = () => { const w = $('#warnTop'); w.classList.toggle('col'); $('#warnHide').textContent = w.classList.contains('col') ? '▾' : '▴'; };
-  $('#btnSample').onclick = () => { if (P.ops.length && !confirm('Thay danh sách hiện tại bằng ví dụ mẫu?')) return; P = O.sampleProject(); renderSettings(); save(); toast('Đã nạp ví dụ mẫu'); };
-  $('#btnClear').onclick = () => { if (!confirm('Xóa hết nguyên công?')) return; P.ops = []; save(); };
-  $('#btnExport').onclick = () => { const b = new Blob([JSON.stringify(P, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = (P.settings.progName || 'du-an') + '.json'; a.click(); };
-  $('#fileImport').onchange = e => { const fl = e.target.files[0]; if (!fl) return; fl.text().then(t => { const j = JSON.parse(t); if (!j.ops) throw new Error('Tệp không hợp lệ'); j.settings = Object.assign({}, O.DEFAULT_SETTINGS, j.settings); j.igf = Object.assign({}, O.DEFAULT_IGF, j.igf || {}); P = j; renderSettings(); save(); toast('Đã nhập dự án'); }).catch(er => alert('Lỗi: ' + er.message)); };
+  $('#setupNew').onclick = () => askName('Tạo setup mới', 'Sản phẩm mới', 'Tạo', nm => {
+    const prog = O.asc(nm).replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'NEW';
+    beginSetup(nm, {
+      settings: Object.assign({}, O.DEFAULT_SETTINGS, { progName: prog, comment: nm }),
+      ops: [],
+      igf: Object.assign({}, O.DEFAULT_IGF, { elems: [] })
+    }, 1);
+    toast('Đã tạo ' + nm);
+  });
+  $('#setupTest1').onclick = () => startTest1();
+  $('#setupSample').onclick = () => {
+    const proj = O.sampleProject();
+    beginSetup(proj.settings.comment || 'Ví dụ mẫu', proj, 1);
+    toast('Đã tạo ví dụ mẫu');
+  };
+  $('#setupExportAll').onclick = () => exportAll();
+  $('#setupImport').onchange = e => {
+    const fl = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!fl) return;
+    fl.text().then(t => {
+      const n = importPayload(JSON.parse(t));
+      renderSetups();
+      toast('Đã nhập ' + n + ' setup');
+    }).catch(er => alert('Lỗi: ' + er.message));
+  };
+  $('#setupList').addEventListener('click', e => {
+    const li = e.target.closest && e.target.closest('[data-sid]');
+    if (!li) return;
+    const id = li.dataset.sid;
+    const btn = e.target.closest && e.target.closest('[data-sa]');
+    if (!btn) { openSetup(id); return; }
+    const a = btn.dataset.sa;
+    if (a === 'open') openSetup(id);
+    else if (a === 'copy') copySetup(id);
+    else if (a === 'rename') renameSetup(id);
+    else if (a === 'del') deleteSetup(id);
+    else if (a === 'exp') exportOne(id);
+  });
+  const flow = $('#v-flow'); if (flow) flow.addEventListener('click', flowClick);
   function net() { const s = $('#netState'); s.textContent = navigator.onLine ? '● Online' : '● Offline'; s.style.background = navigator.onLine ? '#ffffff22' : '#e8750a'; }
   addEventListener('online', net); addEventListener('offline', net); net();
-  if (!P.ops.length && !localStorage.getItem(KEY)) P = O.sampleProject();
-  renderSettings(); renderHelp(); refresh();
-  const igfBox = $('#igfRoot'); if (igfBox) igfBox.addEventListener('click', igfRootClick);
-  const prevHost = $('#prevColorHost'); if (prevHost) prevHost.innerHTML = colorPanelHTML();
-  const dock2 = $('#prevDock2d'); if (dock2) dock2.innerHTML = simDockHTML(false);
-  const dock3 = $('#prevDock3d'); if (dock3) dock3.innerHTML = simDockHTML(false);
-  paintColorInputs();
-  paintPathControls();
+  renderHelp(); refresh(); renderSetups(); paintHeader();
   if (window.OKU3D) { window.OKU3D.setAppearance(loadView()); window.OKU3D.setPathStyle(loadView()); }
   document.addEventListener('input', e => {
     const t = e.target;
@@ -1033,7 +1457,6 @@
       v.linePx = Number(t.value) || 1.25;
       saveView(v, t);
       if ($('#cvSim')) drawSim();
-      if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
       return;
     }
     if (t.dataset.c3) {
@@ -1079,38 +1502,23 @@
       v.showPath = v.showPath === false;
       saveView(v);
       if ($('#cvSim')) drawSim();
-      if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
     }
   });
-  const prev2 = $('#prev2d'), prev3 = $('#prev3d'), prevSec = $('#prevSection'), prevCam = $('#prevCam');
-  if (prev2) prev2.onclick = () => { prevView = '2d'; applyPrevView(); drawPreview(); scheduleFitPrev(); };
-  if (prev3) prev3.onclick = () => { prevView = '3d'; applyPrevView(); drawPreview(); scheduleFitPrev(); };
-  addEventListener('resize', () => {
-    if (igfStep === 4 && $('#v-igf') && $('#v-igf').classList.contains('on')) scheduleFitSim();
-    if ($('#v-prev') && $('#v-prev').classList.contains('on')) scheduleFitPrev();
-  });
-  if (prevSec) prevSec.onclick = () => { prevSection = !prevSection; applyPrevView(); drawPreview(); };
-  if (prevCam) prevCam.onclick = () => { if (window.OKU3D) window.OKU3D.resetCam(); };
+  addEventListener('resize', () => { if (simOn()) scheduleFitSim(); });
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { });
-  // mở tab theo hash (dùng cho chụp màn hình)
-  let hv = { '#code': 'v-code', '#prev': 'v-prev', '#set': 'v-set', '#help': 'v-help' }[location.hash];
-  if (/^#igf/.test(location.hash || '')) {
-    hv = 'v-igf';
-    const m = location.hash.match(/igf([1-5])/);
-    if (m) igfStep = Number(m[1]);
-    if (/demo/.test(location.hash) || /igf[2-5]/.test(location.hash)) {
-      if (!(igf().elems || []).length) {
-        P.igf = O.igfTutorial();
-        if (/demo/.test(location.hash)) {
-          P.settings.progName = 'TEST1';
-          P.settings.comment = 'IGF TEST1';
-          applyIgf();
-          renderSettings();
-          save();
-        }
-      }
+  (function bootHash() {
+    const h = location.hash || '';
+    if (h === '#help') { showView('v-help'); return; }
+    if (!h || h === '#setup') return;
+    let step = { '#set': 1, '#prev': 5, '#code': 6 }[h] || 0;
+    const m = h.match(/^#(?:igf|flow)([1-6])?/);
+    if (m) {
+      if (/^#igf/.test(h) && m[1]) step = [0, 2, 3, 4, 5, 6][Number(m[1])] || 1;
+      else step = m[1] ? Number(m[1]) : (igfStep || 1);
     }
-  }
-  if (hv) document.querySelector(`.tabs button[data-v="${hv}"]`).click();
+    if (!activeSetup() || !step) return;
+    igfStep = step;
+    showView('v-flow');
+  })();
   window.__okuOpenForm = i => openForm(P.ops[i]); window.__okuFab = () => $('#fab').click();
 })();

@@ -61,7 +61,7 @@ function buildHtml() {
   ];
   for (const [from, to] of replacements) {
     if (!html.includes(from)) throw new Error('Không tìm thấy đoạn cần thay trong index.html: ' + from.slice(0, 80));
-    html = html.replace(from, to);
+    html = html.replace(from, () => to);
   }
   if (!html.startsWith('<!doctype html>')) html = '<!-- okuma-offline-build: self-contained, no network -->\n' + html;
   else html = html.replace('<!doctype html>', '<!doctype html>\n<!-- okuma-offline-build: self-contained, no network -->');
@@ -78,8 +78,8 @@ function buildHtml() {
   for (const re of banned) {
     if (re.test(html)) throw new Error('HTML offline còn tham chiếu ngoài hoặc service worker: ' + re);
   }
-  if (!html.includes('okuma_lb3000_v1') || !html.includes('Tải bản chạy offline')) {
-    throw new Error('HTML offline thiếu ứng dụng hoặc nút tải.');
+  if (!html.includes('okuma_lb3000_v1') || !html.includes('Tải bản chạy offline') || !html.includes('$${pname}.MIN%')) {
+    throw new Error('HTML offline thiếu ứng dụng, nút tải, hoặc dòng $TEN.MIN%.');
   }
   const scripts = [...html.matchAll(/<script>\n([\s\S]*?)\n<\/script>/g)].map(m => m[1]);
   if (scripts.length !== 3) throw new Error('Cần đúng 3 script nhúng, thấy ' + scripts.length);

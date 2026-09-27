@@ -99,26 +99,26 @@ async function prep(cdp, offline) {
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 }
 async function openSim(cdp) {
-  await ev(cdp, `document.querySelector('.tabs button[data-v="v-igf"]').click()`);
-  await waitFor(cdp, `!!document.querySelector('[data-step="4"]')`);
-  await ev(cdp, `document.querySelector('[data-step="4"]').click()`);
+  await ev(cdp, `document.querySelector('#setupSample').click()`);
+  await waitFor(cdp, `!!document.querySelector('[data-step="5"]')`);
+  await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
   await waitFor(cdp, `!!document.querySelector('#cvSim3d') && !!document.querySelector('#simPlay') && window.OKU3D && window.OKU3D.ok()`);
   await sleep(200);
 }
 function layoutExpr() {
   return `(() => {
     const r = el => { const b = el && el.getBoundingClientRect(); return b ? { t: b.top, b: b.bottom, h: b.height } : null; };
-    const views = document.querySelector('#v-igf .simviews') || document.querySelector('#cvSim3d');
+    const views = document.querySelector('#v-flow .simviews') || document.querySelector('#cvSim3d');
     return {
       bar: r(document.querySelector('#simViewBar')),
       cv2: r(document.querySelector('#cvSim')),
       cv3: r(document.querySelector('#cvSim3d')),
       play: r(document.querySelector('#simPlay')),
-      dock: r(document.querySelector('#v-igf .simdock')),
+      dock: r(document.querySelector('#v-flow .simstage .simdock')),
       tabs: r(document.querySelector('.tabs')),
       views: r(views),
-      path: (document.querySelector('#v-igf [data-sim="path"]')||{}).textContent,
-      lw: (document.querySelector('#v-igf [data-simlw]')||{}).value
+      path: (document.querySelector('#v-flow .simstage [data-sim="path"]')||{}).textContent,
+      lw: (document.querySelector('#v-flow .simstage [data-simlw]')||{}).value
     };
   })()`;
 }
@@ -166,7 +166,7 @@ async function runPage(cdp, errors, tag) {
   await ev(cdp, `document.querySelector('#simPlay').scrollIntoView({ block: 'end' })`);
   await sleep(120);
   const controls = tag === 'offline' ? null : await shot(cdp, '3d-controls-under.png');
-  await ev(cdp, `document.querySelector('#v-igf [data-sim="path"]').click()`);
+  await ev(cdp, `document.querySelector('#v-flow .simstage [data-sim="path"]').click()`);
   await sleep(150);
   const hidden = await ev(cdp, `(() => {
     const c = document.querySelector('#cvSim3d');
@@ -181,10 +181,10 @@ async function runPage(cdp, errors, tag) {
     return orange;
   })()`);
   if (!(hidden < counts.orange * 0.35)) errors.push(tag + ' ẩn đường dao không hết nét cam: ' + hidden + ' / ' + counts.orange);
-  await ev(cdp, `document.querySelector('#v-igf [data-sim="path"]').click()`);
+  await ev(cdp, `document.querySelector('#v-flow .simstage [data-sim="path"]').click()`);
   let prev = null;
   if (tag !== 'offline') {
-    await ev(cdp, `document.querySelector('.tabs button[data-v="v-prev"]').click()`);
+    await ev(cdp, `document.querySelector('#prev3d').scrollIntoView({ block: 'center' })`);
     await waitFor(cdp, `!!document.querySelector('#prev3d')`);
     await ev(cdp, `document.querySelector('#prev3d').click()`);
     await sleep(300);
@@ -213,7 +213,7 @@ async function runServed() {
   try {
     await prep(cdp, false);
     await cdp.send('Page.navigate', { url: 'http://127.0.0.1:8765/' });
-    await waitFor(cdp, `document.readyState === 'complete' && !!document.querySelector('#opsList')`);
+    await waitFor(cdp, `document.readyState === 'complete' && !!document.querySelector('#setupNew')`);
     const page = await runPage(cdp, errors, 'served');
     const http = requests.filter(u => /^https?:/i.test(u) && !u.startsWith('http://127.0.0.1:8765'));
     if (http.length) errors.push('Gọi mạng ngoài: ' + http.join(' | '));

@@ -116,9 +116,9 @@ async function touch(cdp, type, points) {
   });
 }
 async function openSim(cdp) {
-  await ev(cdp, `document.querySelector('.tabs button[data-v="v-igf"]').click()`);
-  await waitFor(cdp, `!!document.querySelector('[data-step="4"]')`);
-  await ev(cdp, `document.querySelector('[data-step="4"]').click()`);
+  await ev(cdp, `document.querySelector('#setupSample').click()`);
+  await waitFor(cdp, `!!document.querySelector('[data-step="5"]')`);
+  await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
   await waitFor(cdp, `!!document.querySelector('#cvSim3d') && window.OKU3D && window.OKU3D.ok()`);
   await ev(cdp, `document.querySelector('#sim3d').click()`);
   await sleep(200);
@@ -237,7 +237,7 @@ async function runServed() {
   try {
     await prep(cdp, false);
     await cdp.send('Page.navigate', { url: 'http://127.0.0.1:8765/' });
-    await waitFor(cdp, `document.readyState === 'complete' && !!document.querySelector('#opsList')`);
+    await waitFor(cdp, `document.readyState === 'complete' && !!document.querySelector('#setupNew')`);
     const gestures = await checkRoundAndGestures(cdp, errors, 'served');
     const colors = await checkColors(cdp, errors);
     const http = requests.filter(u => /^https?:/i.test(u) && !u.startsWith('http://127.0.0.1:8765'));

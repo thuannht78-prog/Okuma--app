@@ -133,9 +133,9 @@ async function prep(cdp, offline) {
 }
 
 async function openSim(cdp) {
-  await ev(cdp, `document.querySelector('.tabs button[data-v="v-igf"]').click()`);
-  await waitFor(cdp, `!!document.querySelector('[data-step="4"]')`);
-  await ev(cdp, `document.querySelector('[data-step="4"]').click()`);
+  await ev(cdp, `document.querySelector('#setupSample').click()`);
+  await waitFor(cdp, `!!document.querySelector('[data-step="5"]')`);
+  await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
   await waitFor(cdp, `!!document.querySelector('#cvSim3d') && !!window.OKU3D && !!document.querySelector('#simStep')`);
   await sleep(250);
   const labels = await ev(cdp, `(() => ({
@@ -181,7 +181,7 @@ async function runServed() {
   try {
     await prep(cdp, false);
     await cdp.send('Page.navigate', { url: 'http://127.0.0.1:8765/' });
-    await waitFor(cdp, `document.readyState === 'complete' && !!document.querySelector('#opsList')`);
+    await waitFor(cdp, `document.readyState === 'complete' && !!document.querySelector('#setupNew')`);
     await sleep(200);
     await openSim(cdp);
     const stepped = await ev(cdp, `(() => { const b = document.querySelector('#simStep'); for (let i = 0; i < 36; i++) b.click(); return (document.querySelector('#simStatus')||{}).textContent; })()`);
@@ -210,7 +210,7 @@ async function runServed() {
     const gate = await ev(cdp, `(document.querySelector('.simgate')||{}).textContent || ''`);
     if (!gate.includes('Đã mô phỏng')) throw new Error('Chưa khóa xuất sau mô phỏng: ' + gate);
 
-    await ev(cdp, `document.querySelector('.tabs button[data-v="v-prev"]').click()`);
+    await ev(cdp, `document.querySelector('#prev3d').scrollIntoView({ block: 'center' })`);
     await waitFor(cdp, `!!document.querySelector('#prev3d')`);
     await ev(cdp, `document.querySelector('#prev3d').click()`);
     await sleep(300);

@@ -178,9 +178,7 @@ async function main() {
     if (!btn.zip.endsWith('/download/okuma-app-offline.zip')) throw new Error('Sai link zip: ' + btn.zip);
     const shotBtn = await shot(cdp, 'offline-download-button.png');
 
-    await ev(cdp, `document.querySelector('.tabs button[data-v="v-igf"]').click()`);
-    await waitFor(cdp, `!!document.querySelector('#igfDemo')`);
-    await ev(cdp, `document.querySelector('#igfDemo').click()`);
+    await ev(cdp, `document.querySelector('#setupTest1').click()`);
     await waitFor(cdp, `!!document.querySelector('#igfCv')`);
     const shape = await ev(cdp, `(() => {
       const cv = document.querySelector('#igfCv');
@@ -191,7 +189,7 @@ async function main() {
     })()`);
     if (!shape.diff) throw new Error('Canvas IGF trống');
 
-    await ev(cdp, `document.querySelector('[data-step="3"]').click()`);
+    await ev(cdp, `document.querySelector('[data-step="4"]').click()`);
     await waitFor(cdp, `document.querySelectorAll('#igfOps button[data-a="ed"]').length > 0`);
     const before = await ev(cdp, `document.querySelector('#igfOps li small').textContent`);
     await ev(cdp, `document.querySelector('#igfOps button[data-a="ed"]').click()`);
@@ -199,10 +197,10 @@ async function main() {
     await ev(cdp, `(() => { const el = document.querySelector('#f_feed'); el.value = '0.33'; el.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#opSave').click(); return true; })()`);
     await waitFor(cdp, `document.querySelector('#sheet').hidden === true && (document.querySelector('#igfOps li small')||{}).textContent && (document.querySelector('#igfOps li small').textContent).includes('F0.33')`);
     const after = await ev(cdp, `document.querySelector('#igfOps li small').textContent`);
-    const stored = await ev(cdp, `JSON.parse(localStorage.getItem('okuma_lb3000_v1')).ops[0].feed`);
+    const stored = await ev(cdp, `(() => { const lib = JSON.parse(localStorage.getItem('okuma_lb3000_setups_v1')); const s = lib.items.find(x => x.name === 'TEST1') || lib.items[0]; return s.project.ops[0].feed; })()`);
     if (stored !== 0.33) throw new Error('localStorage không lưu feed, giá trị=' + stored);
 
-    await ev(cdp, `document.querySelector('[data-step="4"]').click()`);
+    await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
     await waitFor(cdp, `!!document.querySelector('#cvSim') && !!document.querySelector('#simStep')`);
     const sim = await ev(cdp, `(() => {
       const btn = document.querySelector('#simStep');
@@ -220,7 +218,7 @@ async function main() {
     await sleep(100);
     const shotApp = await shot(cdp, 'offline-file-open.png');
 
-    await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
+    await ev(cdp, `document.querySelector('[data-step="6"]').click()`);
     await waitFor(cdp, `!!document.querySelector('#igfDl') && (document.querySelector('.simgate')||{}).textContent && document.querySelector('.simgate').textContent.includes('Đã mô phỏng')`);
     await ev(cdp, `(() => {
       window.__dl = '';
@@ -231,11 +229,11 @@ async function main() {
     })()`);
     const exported = await waitFor(cdp, `window.__dl && window.__dl.length > 20 ? window.__dl.slice(0, 1500) : ''`);
     if (!exported.includes('F0.33')) throw new Error('File .MIN không có F0.33:\\n' + exported);
-    if (!/G50|G00|OTEST1/.test(exported)) throw new Error('File .MIN không giống chương trình OSP:\\n' + exported);
+    if (!exported.includes('$TEST1.MIN%') || !/G50|G00|OTEST1/.test(exported)) throw new Error('File .MIN không giống chương trình OSP:\\n' + exported);
 
     await cdp.send('Page.reload', { ignoreCache: true });
-    await waitFor(cdp, `document.readyState === "complete" && !!document.querySelector('#opsList li')`);
-    const stored2 = await ev(cdp, `JSON.parse(localStorage.getItem('okuma_lb3000_v1')).ops[0].feed`);
+    await waitFor(cdp, `document.readyState === "complete" && !!document.querySelector('#setupList li')`);
+    const stored2 = await ev(cdp, `(() => { const lib = JSON.parse(localStorage.getItem('okuma_lb3000_setups_v1')); const s = lib.items.find(x => x.name === 'TEST1') || lib.items[0]; return s.project.ops[0].feed; })()`);
     if (stored2 !== 0.33) throw new Error('Sau khi tải lại, feed mất: ' + stored2);
 
     const httpReqs = requests.filter(u => /^https?:/i.test(u));
@@ -244,7 +242,7 @@ async function main() {
     if (offline !== false) errors.push('navigator.onLine=' + offline + ' (mong đợi false khi cắt mạng)');
     const badDialog = dialogs.filter(m => /Chưa mô phỏng/.test(m));
     if (badDialog.length) errors.push('Xuất mã khi chưa mô phỏng: ' + badDialog.join(' / '));
-    if (!dialogs.some(m => /TEST1/.test(m))) errors.push('Không thấy hộp thoại nạp ví dụ IGF');
+    if (!/TEST1/.test(await ev(cdp, `(document.querySelector('#setupList')||{}).textContent || ''`))) errors.push('Sau khi tải lại không thấy setup TEST1');
 
     const report = {
       ok: errors.length === 0,

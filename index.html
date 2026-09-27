@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f3d5e">
-<meta name="description" content="Lập trình CNC cho máy tiện Okuma LB3000EX II – OSP-P300L (LAP G85/G87, ren G71, rãnh, cắt đứt, khoan/phay dao động lực trục C/Y, chống tâm)">
+<meta name="description" content="Lập trình CNC cho máy tiện Okuma LB3000EX II – OSP-P300L, quy trình IGF: thiết lập, phôi, biên dạng, nguyên công, mô phỏng, xuất mã">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./icon-192.png">
@@ -13,7 +13,7 @@
 </head>
 <body>
 <header class="bar">
-  <div class="ttl"><b>Okuma LB3000EX II</b><small>OSP-P300L · Lập trình tiện CNC</small></div>
+  <div class="ttl"><b id="headTitle">Okuma LB3000EX II</b><small id="headSub">OSP-P300L · Quản lý setup</small></div>
   <span id="netState" class="pill">●</span>
 </header>
 <div id="warnTop" class="danger">
@@ -32,70 +32,32 @@
 </div>
 
 <main>
-  <section id="v-ops" class="view on">
-    <div class="rowh"><h2>Danh sách nguyên công</h2><span id="opCount" class="muted"></span></div>
-    <div id="opsEmpty" class="empty">Chưa có nguyên công. Bấm <b>＋</b> để thêm, hoặc vào <b>Thiết lập → Nạp ví dụ mẫu</b>.</div>
-    <ol id="opsList" class="ops"></ol>
-    <div id="sumWarn" class="sumwarn"></div>
-    <button id="fab" class="fab" aria-label="Thêm nguyên công">＋</button>
-  </section>
-
-  <section id="v-igf" class="view">
-    <h2>IGF — lập trình theo hình</h2>
-    <div class="danger slim">⚠ Chương trình do IGF tạo ra vẫn phải <b>chạy thử không phôi</b> hoặc <b>mô phỏng trên máy</b> trước khi cắt. Đây là cách làm trên màn hình, không thay cho IGF trên OSP.</div>
-    <div id="igfRoot"></div>
-  </section>
-
-  <section id="v-set" class="view">
-    <h2>Thiết lập chương trình &amp; máy</h2>
-    <form id="setForm" class="form" autocomplete="off"></form>
-    <h3>Dự án</h3>
+  <section id="v-setup" class="view on">
+    <div class="rowh"><h2>Quản lý setup</h2><span id="setupCount" class="muted"></span></div>
+    <p class="hint">Mỗi setup là một sản phẩm trong IGF: thiết lập máy, phôi (BLANK), biên dạng (TURNING SHAPE), nguyên công (PROCESS DECIDE), mô phỏng và xuất mã (PROGRAM CREATE). Dữ liệu lưu trên máy này.</p>
     <div class="btns">
-      <button id="btnSample" class="b2">Nạp ví dụ mẫu (đủ mọi nguyên công)</button>
-      <button id="btnExport" class="b2">Xuất dự án (.json)</button>
-      <label class="b2 file">Nhập dự án<input id="fileImport" type="file" accept=".json,application/json"></label>
-      <button id="btnClear" class="b2 red">Xóa hết nguyên công</button>
+      <button type="button" id="setupNew" class="b1">Tạo setup mới</button>
+      <button type="button" id="setupTest1" class="b2">Tạo từ ví dụ sách (TEST1)</button>
+      <button type="button" id="setupSample" class="b2">Tạo từ ví dụ mẫu</button>
     </div>
-    <p class="muted small">Dữ liệu lưu tự động trong trình duyệt của máy này (không có máy chủ). Ứng dụng chạy offline sau lần mở đầu tiên.</p>
+    <div class="btns">
+      <button type="button" id="setupExportAll" class="b2">Xuất tất cả (.json)</button>
+      <label class="b2 file">Nhập file setup<input id="setupImport" type="file" accept=".json,application/json"></label>
+    </div>
+    <div id="setupEmpty" class="empty">Chưa có setup. Bấm <b>Tạo setup mới</b> để bắt đầu một sản phẩm.</div>
+    <ul id="setupList" class="ops"></ul>
   </section>
 
-  <section id="v-code" class="view">
-    <div class="rowh"><h2>Chương trình NC</h2><span id="codeStat" class="muted"></span></div>
-    <div class="danger slim">⚠ Kiểm tra bằng chạy thử / mô phỏng trước khi cắt. Mã có đánh dấu “Còn nghi ngờ” trong mục Tra cứu.</div>
-    <div class="simgate danger slim">Chưa mô phỏng. Hãy chạy IGF → Mô phỏng trước khi xuất.</div>
-    <div class="fname"><label>Tên tệp <input id="fname" value="LB3000A"></label><span>.MIN</span></div>
-    <div class="btns sticky">
-      <button id="btnCopy" class="b1">📋 Sao chép</button>
-      <button id="btnDl" class="b1">⬇ Tải .MIN</button>
-      <button id="btnShare" class="b1">↗ Chia sẻ</button>
-    </div>
-    <div id="codeWarn"></div>
-    <pre id="code" class="code"></pre>
-  </section>
-
-  <section id="v-prev" class="view">
-    <div class="rowh"><h2>Xem trước</h2><select id="prevSel"></select></div>
-    <div class="simbar" id="prevViewBar">
-      <button type="button" class="b2 on" id="prev2d">2D</button>
-      <button type="button" class="b2" id="prev3d">3D</button>
-    </div>
-    <div id="prev2dWrap">
-      <div class="cvwrap"><div class="cvt">Mặt cắt dọc (X–Z) · nửa trên chi tiết, nửa dưới đối xứng</div><canvas id="cvSide" width="760" height="420"></canvas></div>
-      <div id="prevDock2d"></div>
-      <div class="cvwrap"><div class="cvt">Nhìn từ mặt đầu (X–Y / C) · lỗ, rãnh, hốc, mặt phẳng</div><canvas id="cvFace" width="760" height="560"></canvas></div>
-      <p class="muted small">Hình minh họa hình học từ dữ liệu nhập (không phải mô phỏng đường chạy dao thực của bộ điều khiển). Quy ước hình mặt đầu: C0 hướng sang phải, C dương ngược chiều kim đồng hồ – chiều thực tế phải kiểm tra trên máy.</p>
-      <div class="legend"><span class="lg p">Biên dạng tinh</span><span class="lg r">Lát cắt thô</span><span class="lg c">Cắt đứt</span><span class="lg h">Nguyên công đang chọn</span><span class="lg t">Chống tâm</span></div>
-    </div>
-    <div class="cvwrap" id="prev3dWrap" hidden>
-      <div class="cvt">Thành phẩm 3D (ước lượng cả đường dao) · một ngón xoay theo tay, hai ngón phóng và kéo</div>
-      <canvas id="cvPrev3d" width="760" height="480"></canvas>
-      <div class="simbar">
-        <button type="button" class="b2" id="prevSection">Mặt cắt</button>
-        <button type="button" class="b2" id="prevCam">Đặt lại góc nhìn</button>
+  <section id="v-flow" class="view">
+    <div class="rowh"><h2 id="flowName">Quy trình IGF</h2><button type="button" id="flowToSetup" class="b2">Danh sách</button></div>
+    <div id="flowEmpty" class="empty">Chưa mở setup. Vào <b>Setup</b> để tạo mới, mở hoặc sao chép một sản phẩm.</div>
+    <div id="flowWork" hidden>
+      <div class="igfsteps" id="flowSteps"></div>
+      <div class="btns flownav">
+        <button type="button" id="flowBack" class="b2">← Trước</button>
+        <button type="button" id="flowNext" class="b1">Tiếp →</button>
       </div>
-      <div id="prevDock3d"></div>
-      <div id="prevColorHost"></div>
-      <p class="muted small">Khối tròn xoay đã chạy hết dao. Lỗ, rãnh mặt, hốc và mặt phẳng dao động lực là ước lượng. Không thay mô phỏng trên máy.</p>
+      <div id="igfRoot"></div>
     </div>
   </section>
 
@@ -106,13 +68,12 @@
 </main>
 
 <nav class="tabs">
-  <button data-v="v-ops" class="on"><i>☰</i>Nguyên công</button>
-  <button data-v="v-igf"><i>◇</i>IGF</button>
-  <button data-v="v-set"><i>⚙</i>Thiết lập</button>
-  <button data-v="v-code"><i>⌨</i>Mã NC</button>
-  <button data-v="v-prev"><i>◩</i>Xem trước</button>
-  <button data-v="v-help"><i>?</i>Tra cứu</button>
+  <button type="button" data-v="v-setup" class="on"><i>☰</i>Setup</button>
+  <button type="button" data-v="v-flow"><i>◇</i>Quy trình</button>
+  <button type="button" data-v="v-help"><i>?</i>Tra cứu</button>
 </nav>
+
+<button id="fab" class="fab" aria-label="Thêm nguyên công" hidden>＋</button>
 
 <div id="sheet" class="sheet" hidden>
   <div class="sheetin">
