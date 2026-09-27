@@ -17,13 +17,15 @@
     { k: 'progName', t: 'txt', label: 'Tên chương trình (chữ + số, dùng cho $TEN.MIN%)' },
     { k: 'comment', t: 'txt', label: 'Ghi chú / tên chi tiết' },
     { k: 'stockD', t: 'num', label: 'Ø phôi (mm)' }, { k: 'stockL', t: 'num', label: 'Chiều dài phôi nhô ra khỏi mâm (mm)' },
+    { k: 'jawLen', t: 'num', label: 'Chiều dài chấu từ mặt mâm về phía phôi (mm) — cảnh báo va chạm' },
+    { k: 'jawOd', t: 'num', label: 'Ø ngoài chấu mâm (mm) — vùng chấu khi mô phỏng' },
     { k: 'material', t: 'txt', label: 'Vật liệu' },
     { k: 'g50', t: 'num', label: 'G50 – giới hạn tốc độ trục chính (vòng/ph)' },
     { k: 'machMax', t: 'num', label: 'Tốc độ tối đa trục chính của máy (xem nhãn máy)' },
     { k: 'liveMax', t: 'num', label: 'Tốc độ tối đa dao động lực (xem nhãn máy)' },
     { k: 'homeX', t: 'num', label: 'Điểm thay dao X (đường kính, toạ độ phôi)' }, { k: 'homeZ', t: 'num', label: 'Điểm thay dao Z' },
     { k: 'endCode', t: 'sel', label: 'Kết thúc chương trình', opts: [['M02', 'M02'], ['M30', 'M30']] },
-    { k: 'dollar', t: 'chk', label: 'Thêm dòng $TEN.MIN% (định dạng tệp — chưa thấy trong 4 sách đã tải) và % cuối. Dòng O + tên luôn được ghi (IGF, tối đa 8 ký tự).' },
+    { k: 'dollar', t: 'chk', label: 'Thêm dòng $TEN.MIN% (LE33-021 P-510) và % cuối. Dòng O + tên luôn được ghi (tối đa 8 ký tự, P-1/P-3).' },
     { k: 'coolant', t: 'chk', label: 'Dùng tưới nguội M08/M09' },
     { k: 'liveDir', t: 'sel', label: 'Chiều quay dao động lực', opts: [['M13', 'M13 (thuận)'], ['M14', 'M14 (nghịch)']] },
     { k: 'cDir', t: 'sel', label: 'Chiều định vị trục C', opts: [['M15', 'M15 (chiều +)'], ['M16', 'M16 (chiều −)']] },
@@ -105,10 +107,8 @@
     const g = R ? R.warnings.filter(w => !w.op) : [];
     $('#sumWarn').innerHTML = g.length ? `<ul class="wlist">${g.map(w => `<li class="${w.lvl}">${esc(w.msg)}</li>`).join('')}</ul>` : '';
   }
-  $('#opsList').addEventListener('click', e => {
-    const b = e.target.closest('button[data-a]'); if (!b) return;
-    const id = b.closest('li.op').dataset.id, i = P.ops.findIndex(o => o.id === id); if (i < 0) return;
-    const a = b.dataset.a;
+  function actOp(a, id) {
+    const i = P.ops.findIndex(o => o.id === id); if (i < 0) return;
     if (a === 'up' && i > 0) [P.ops[i - 1], P.ops[i]] = [P.ops[i], P.ops[i - 1]];
     if (a === 'dn' && i < P.ops.length - 1) [P.ops[i + 1], P.ops[i]] = [P.ops[i], P.ops[i + 1]];
     if (a === 'ed') return openForm(P.ops[i]);
@@ -116,6 +116,11 @@
     if (a === 'tg') P.ops[i].on = P.ops[i].on === false;
     if (a === 'rm') { if (!confirm('Xóa nguyên công này?')) return; P.ops.splice(i, 1); }
     save();
+    if ($('#v-igf').classList.contains('on')) renderIgf();
+  }
+  $('#opsList').addEventListener('click', e => {
+    const b = e.target.closest('button[data-a]'); if (!b) return;
+    actOp(b.dataset.a, b.closest('li.op').dataset.id);
   });
 
   // ---------- Bảng chọn / form ----------
@@ -132,8 +137,8 @@
     facing: 'Khỏa mặt nhiều lát từ Z+ (lượng dư) về Z0 bằng G96. Nếu đang có chống tâm và X kết thúc nhỏ hơn Ø vùng mũi tâm, chương trình sẽ báo lỗi hoặc tự lùi chống tâm.',
     od: 'LAP: G85/G86 NATxx D F U W gọi chu trình thô; biên dạng tinh nằm giữa NATxx G81 … G80; G87 NATxx chạy tinh. D và U tính theo ĐƯỜNG KÍNH. Bước tiến tinh nằm trong biên dạng.',
     id: 'Giống tiện ngoài nhưng biên dạng trong (Ø giảm dần vào trong), bù G41. Cần lỗ có sẵn/khoan trước. Không làm được khi có chống tâm.',
-    thread: 'G71 X(Ø chân ren) Z(điểm cuối) B(góc) D(lát đầu, Ø) U(dư tinh, Ø) H(cao ren, Ø) F(bước) + M32/M33/M34 + M73/M74/M75. Chế độ G95, G97 tốc độ cố định. H tự tính: ngoài 1.2269×P, trong 1.0825×P.',
-    groove: 'Rãnh ngoài: dao cắt theo X; rãnh rộng hơn dao sẽ ăn nhiều nhát chồng 20%. Chu trình G73/G74: D là chiều sâu mỗi nhát mổ – kiểm tra kỹ nghĩa các từ trên máy.',
+    thread: 'G71 X(Ø lát cuối) Z B D U H F + M32/M33/M34 + M73/M74/M75. LE33-021 P-174..P-182: X theo đường kính. Ren ngoài X = Ø danh nghĩa − H; ren trong X cuối = Ø lớn, điểm vào nhỏ hơn (ví dụ sách chỉ có ren ngoài). H tự tính: ngoài ≈ 1.2269×P, trong ≈ 1.0825×P. Vát: M23 bật, M22 tắt (P-167).',
+    groove: 'Rãnh ngoài: dao cắt theo X; rãnh rộng hơn dao sẽ ăn nhiều nhát chồng 20%. G73 D theo đường kính (LE33-021 P-197, hình ghi D/2). G74 D là chiều sâu theo Z (P-200).',
     cutoff: 'Cắt đứt bắt buộc chống tâm đã LÙI. G50 riêng để giới hạn tốc độ khi dao vào gần tâm, sau đó khôi phục G50 chung.',
     drill: 'Mũi khoan tĩnh trên đài dao, trục chính quay (G97). Khoan mổ dùng G74 X0 Z D F. Đánh dấu “khoan tâm” để cho phép tiến chống tâm sau đó.',
     lface: 'Dao động lực dọc trục: M110 (nối trục C, block riêng) → G94 → SB= M13 → G181/G183/G184 X(Ø vòng lỗ) Z(đáy) C(góc) K(khoảng chạy nhanh) F(mm/ph) → các dòng C tiếp theo → G180 → M12, M109, G95. Chu trình tự kẹp/nhả trục C.',
@@ -155,6 +160,7 @@
       m.fields.forEach(fd => { const v = readField(fd, 'f_', form); if (v !== undefined) op[fd.k] = v; });
       if (isNew) P.ops.push(op); else { const i = P.ops.findIndex(o => o.id === op.id); if (i >= 0) P.ops[i] = op; }
       selId = op.id; closeSheet(); save(); toast(isNew ? 'Đã thêm: ' + m.name : 'Đã lưu');
+      if ($('#v-igf').classList.contains('on')) renderIgf();
     };
   }
 
@@ -170,18 +176,42 @@
     $('#codeStat').textContent = `${R.lines.length} dòng · ${ne} lỗi · ${nw} cảnh báo`;
     $('#codeWarn').innerHTML = R.warnings.length ? `<details class="wdet" ${ne ? 'open' : ''}><summary>${ne ? '⛔ ' + ne + ' lỗi, ' : ''}⚠ ${nw} cảnh báo – bấm để xem</summary><ul class="wlist">${R.warnings.map(w => `<li class="${w.lvl}"><b>${w.idx != null ? '#' + (w.idx + 1) + ' ' : ''}${VI_LVL[w.lvl]}:</b> ${esc(w.msg)}</li>`).join('')}</ul></details>` : '';
     if (!$('#fname').dataset.touched) $('#fname').value = O.asc(P.settings.progName).replace(/[^A-Z0-9]/g, '') || 'PROG';
+    const ig = $('#igfCode'); if (ig) ig.innerHTML = box.innerHTML;
+    const iw = $('#igfCodeWarn'); if (iw) iw.innerHTML = $('#codeWarn').innerHTML;
+    paintGate();
   }
   $('#fname').oninput = e => { e.target.dataset.touched = 1; };
   const fileName = () => (O.asc($('#fname').value).replace(/[^A-Z0-9_-]/g, '') || 'PROG') + '.MIN';
+  function projectSig() { return JSON.stringify({ s: P.settings, o: P.ops, g: P.igf }); }
+  let simDoneSig = null;
+  function simulated() { return simDoneSig === projectSig(); }
+  function exportAllowed() {
+    if (simulated()) return true;
+    return confirm('Chưa mô phỏng IGF (hoặc chương trình đã đổi sau lần mô phỏng). Vẫn xuất mã?\n\nNên mở IGF → Mô phỏng, chạy hết đường dao, rồi mới xuất. Trên máy vẫn phải chạy thử không phôi.');
+  }
+  function paintGate() {
+    document.querySelectorAll('.simgate').forEach(g => {
+      if (simulated()) {
+        g.className = 'danger slim simgate gateok';
+        g.textContent = 'Đã mô phỏng đường dao với dữ liệu hiện tại. Có thể xuất .MIN. Vẫn phải chạy thử không phôi trên máy.';
+      } else {
+        g.className = 'danger slim simgate';
+        g.textContent = 'Chưa mô phỏng (hoặc đã sửa sau lần mô phỏng). Hãy chạy IGF → Mô phỏng trước khi xuất. Xuất lúc này sẽ hỏi lại.';
+      }
+    });
+  }
   $('#btnCopy').onclick = async () => {
+    if (!exportAllowed()) return;
     try { await navigator.clipboard.writeText(R.text); toast('Đã sao chép ' + R.lines.length + ' dòng'); }
     catch (e) { const ta = document.createElement('textarea'); ta.value = R.text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Đã sao chép'); }
   };
   $('#btnDl').onclick = () => {
+    if (!exportAllowed()) return;
     const b = new Blob([R.text], { type: 'application/octet-stream' }); const a = document.createElement('a');
     a.href = URL.createObjectURL(b); a.download = fileName(); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast('Đã tải ' + fileName());
   };
   $('#btnShare').onclick = async () => {
+    if (!exportAllowed()) return;
     try {
       const file = new File([R.text], fileName(), { type: 'text/plain' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: fileName() });
@@ -314,11 +344,11 @@
   }
 
   // ---------- Tra cứu ----------
-  const SRC = 'Nguồn đã đối chiếu: (1) Advanced One-Touch IGF-L OSP-P500L, Operation Reference, LE32-238-R1, 8/2023; (2) Operation Manual Basic/Tutorial, LE32-239-R1, 5/2023; (3) Okuma Basic Programming Manual, CNC Lathe, June 2005; (4) tờ ví dụ chương trình dao động lực (có bảng mã M). Máy chủ là OSP-P300L — sách IGF ghi cho OSP-P500L, cú pháp chu trình LAP lấy từ sách 2005.';
+  const SRC = 'Nguồn đã đối chiếu: OSP-P500 PROGRAMMING MANUAL, 2nd ed., LE33-021-R2 (Oct 2023) — tài liệu lập trình chuẩn; Advanced One-Touch IGF-L LE32-238-R1 (8/2023) và LE32-239-R1 (5/2023); Okuma Basic Programming Manual CNC Lathe (6/2005); tờ ví dụ dao động lực. Máy chủ là OSP-P300L trên LB3000EX II. Số trang P-… là trang in của LE33-021-R2. Mục ghi cho P500 mà P300L không có sẽ được chú thích.';
   const HELP = [
     ['Cấu trúc chương trình', [
       ['O + tên', 'Tên chương trình: chữ O rồi tối đa 8 ký tự (IGF LE32-238 tr.301, ví dụ O1234). Sách 2005 (Word Format) chỉ cho 1 chữ + 3 ký tự sau O. Ứng dụng cắt còn 8 ký tự và luôn ghi dòng này.', 'v'],
-      ['$TEN.MIN%', 'Dòng đầu tệp khi truyền chương trình. Không thấy trong 4 tài liệu đã tải — vẫn là tùy chọn trong Thiết lập. Kết thúc tệp bằng % một dòng riêng.', 'u'],
+      ['$TEN.MIN%', 'LE33-021 P-510: dòng đầu tệp chính là $ + tên + .MIN rồi % (ví dụ $SHAFT-A. MIN %). Ứng dụng ghi liền $TEN.MIN%. Kết thúc tệp bằng % một dòng riêng. Tên sau O tối đa 8 ký tự (P-1, P-3).', 'v'],
       ['( ... )', 'Ghi chú – ứng dụng tự đổi thành IN HOA không dấu.', 'v'],
       ['M02 / M30', 'Kết thúc chương trình (reset, quay về đầu).', 'v'],
       ['M00 / M01', 'Dừng bắt buộc / dừng tùy chọn.', 'v'],
@@ -331,7 +361,7 @@
       ['G95 / G94', 'Bước tiến mm/vòng / mm/phút. Chu trình khoan dao động lực G181–G184 chỉ nhận G94.', 'v'],
       ['M08 / M09', 'Tưới nguội bật/tắt. Sách 2005, bảng mã M trang 2: M08 Coolant On, M09 Coolant Off.', 'v']]],
     ['LAP – tiện biên dạng', [
-      ['G85 NAT01 D F U W', 'Tiện thô thanh (ROUND BAR). Sách 2005, mục LAP: D là chiều sâu cắt theo đường kính (D4 = 4 mm on diameter), U là dư tinh theo đường kính (U0.4), W là dư tinh Z. IGF chọn ROUND BAR hay COPYING bằng tham số 84 (LE32-238 tr.45).', 'v'],
+      ['G85 NAT01 D F U W', 'Tiện thô thanh. LE33-021 P-312: G85 NAT D F U W. D và U theo đường kính, W theo Z. Ví dụ P-509 đặt G96/S/M và T trước G85, không nhét vào block G85. Bộ điều khiển tìm biên dạng theo tên NAT (P-315).', 'v'],
       ['G86 NAT01 D F U W', 'Tiện thô chép hình (phôi đúc/rèn).', 'v'],
       ['G87 NAT01', 'Tiện tinh theo biên dạng; bước tiến lấy từ trong biên dạng.', 'v'],
       ['NAT01 G81 … G80', 'Định nghĩa biên dạng dọc (G82: biên dạng ngang). Tên chuỗi bắt đầu bằng N.', 'v'],
@@ -339,15 +369,15 @@
       ['G41/G42 trong biên dạng', 'Bù mũi dao trong biên dạng LAP – một số máy báo lỗi cắt lẹm khi thô; tắt tùy chọn nếu gặp lỗi.', 'f'],
       ['M85', 'Không quay về điểm bắt đầu sau chu trình thô LAP.', 'v']]],
     ['Tiện ren', [
-      ['G71 X Z B D U H F', 'Chu trình ren dọc. Sách 2005 xác nhận M32/M33/M34, M73/M74/M75 và Q (số đầu mối), J (số ren trong khoảng F). Trang hình không đọc được nghĩa X/D/U/H cho ren trong hay ren ngoài — D, U, H vẫn xuất theo đường kính như bản trước.', 'u'],
-      ['M32/M33/M34', 'Sách 2005 trang hình ren: M32 ăn sườn trái, M33 zíc zắc, M34 ăn sườn phải. M73 chiều sâu giảm dần, M74 đều, M75 giảm dần.', 'v'],
-      ['M73/M74/M75', 'Mẫu chia lát. M73 trong ứng dụng vẫn kiểm tra H − U ≥ D.', 'v'],
-      ['Ren trong G71', 'Các trang chu trình ren của sách 2005 là hình, không đọc được câu “X ren trong”. Ứng dụng vẫn đặt X = Ø danh nghĩa với ren trong và X = Ø danh nghĩa − H với ren ngoài. Phải đối chiếu trên máy.', 'u'],
-      ['M22 / M23', 'Sách 2005 trang 2 ghi M22 Chamfering On, M23 Chamfering Off. Cách này ngược với OSP-P200L mà ứng dụng đang dùng (M23 = bật vát ren). Không đổi mã xuất ra. Kiểm tra một block ren trên máy trước khi tin.', 'u']]],
+      ['G71 X Z B D U H F', 'Chu trình ren dọc, LE33-021 P-174..P-176 và P-182. X là đường kính lát cuối. D, U, H theo đường kính. Ví dụ P-176 là ren ngoài (X28 trên côn). M32/M33/M34 và M73/M74/M75: P-179..P-180.', 'v'],
+      ['M32/M33/M34', 'LE33-021 P-179: M32 một sườn, M33 zíc zắc, M34 một sườn ngược. M73/M74/M75 là mẫu chia lát (P-180).', 'v'],
+      ['M73/M74/M75', 'Mẫu chia lát. P-180 mô tả M73 lát D tới gần H−U nhưng không ghi alarm khi D > H−U — ứng dụng chỉ cảnh báo, không chặn xuất mã. H−U < 0 vẫn là lỗi (P-175).', 'v'],
+      ['Ren trong G71', 'Cùng G71 (P-174). Không có ví dụ ren trong: P-176 chỉ ren ngoài. Ứng dụng đặt điểm vào nhỏ hơn và X cuối = đường kính lớn (P-182: X là đường kính lát cuối). H trong ≈ 1.0825×P. Cần chạy thử trên P300L.', 'f'],
+      ['M22 / M23', 'LE33-021 P-76 mục 9 và P-167: M23 bật vát cuối ren, M22 tắt. P-175: có M23 mà không có L thì L = 1 bước. Ô vát bật → M23, tắt → M22. Bảng sách 2005 ghi ngược; mã xuất theo LE33-021, không đảo cực.', 'v']]],
     ['Rãnh / khoan tĩnh', [
       ['G73 X Z I K D L F E', 'Chu trình rãnh dọc (ăn dao theo X, dịch K theo Z).', 'v'],
       ['G74 X Z I K D L F E', 'Chu trình rãnh mặt / khoan (ăn dao theo Z). Bắt buộc có Z.', 'v'],
-      ['D trong G73/G74', 'Ví dụ sách 2005: G73 X40 Z53 D4 I16 F0.15 E0.5 và G74 X0 Z30 K20 D15 I30 F0.1. Trang không nói D là bán kính hay đường kính. (G190 trục Y thì ghi D theo bán kính — LE32-238 tr.355 — đó là chu trình khác.)', 'u']]],
+      ['D trong G73/G74', 'LE33-021 P-197: G73 D/DP là chiều sâu cắt; hình 7-54 ghi D/2 nên D theo đường kính. P-200: G74 D là chiều sâu mỗi nhát theo Z (hình không chia đôi). P-202: G74 luôn cần X và Z. Khoan tâm: G74 X0 Z D F.', 'v']]],
     ['Dao động lực, trục C', [
       ['M110 / M109', 'Nối trục C (block riêng) / trả về điều khiển trục chính.', 'v'],
       ['M146 / M147', 'M146 = nhả trục C, M147 = kẹp trục C. Tờ ví dụ dao động lực, bảng mã M: “M146 C-axis unclamp”, “M147 C-axis clamp (built in fixed cycle)”. IGF LE32-238 tr.51 gọi M147 là lệnh kẹp. Chu trình G181 tự kẹp; phay G01 thì ứng dụng nhả (M146), ghi G138 C, rồi kẹp (M147).', 'v'],
@@ -362,11 +392,11 @@
     ['Trục Y & phay', [
       ['G138 / G136', 'Bật / hủy chế độ trục Y. IGF LE32-238 tr.353: G138 C (góc C nằm trên block G138); hủy G136 trước khi về điểm thay dao.', 'v'],
       ['G17 / G19', 'Mặt XY (mặt đầu) / YZ (mặt bên). IGF tr.356 xuất G19 khi phay rãnh cạnh trục Y.', 'v'],
-      ['X trong G138', 'Từ G138 đến G136, X phải ghi theo bán kính. IGF LE32-238 tr.353: “the X value must be specified in radius until G136”. Mặc định của ứng dụng là bán kính.', 'v'],
+      ['X trong G138', 'Từ G138 đến G136, X theo bán kính. LE33-021 P-265 mục 4 (điểm về G118 trong chế độ trục Y) và IGF LE32-238 tr.353. Mặc định của ứng dụng là bán kính.', 'v'],
       ['G137', 'Chuyển đổi hệ tọa độ (nội suy cực) – ứng dụng không dùng.', 'f']]],
     ['Ụ động / chống tâm', [
       ['M56 / M55', 'Sách 2005, bảng mã M trang 2: M56 Tailstock spindle advance (tiến), M55 Tailstock spindle retract (lùi). IGF LE32-238 mục 22 gọi quy trình là TS ADVANCE / TS RETRACT, không in lại hai mã M này.', 'v'],
-      ['G195 SP=n', 'Ụ động NC: IGF tr.369 có mục IN-POSITION STATE NO. nhưng không in mã G195. Vẫn lấy từ ví dụ diễn đàn LB3000 — chưa thấy trong 4 tài liệu này.', 'u'],
+      ['G195 SP=n', 'LE33-021 P-673 chỉ ghi tên “NC tailstock multi sizing position”. Không có địa chỉ SP=. Ứng dụng vẫn xuất G195 SP=n khi chọn ụ NC và có số bộ, kèm cảnh báo. Kiểm tra trên OSP-P300L.', 'u'],
       ['M847', 'Ụ động NC về gốc – theo diễn đàn.', 'u'],
       ['M20 / M21', 'Sách 2005 trang 2: M20 Tailstock barrier Off, M21 Tailstock barrier On. IGF LE32-238 tr.306: vùng cấm bắt đầu bằng M21 và kết thúc bằng M20.', 'v'],
       ['M156 / M157', 'Bật / tắt khóa liên động làm việc có tâm (cẩn thận).', 'v'],
@@ -376,11 +406,12 @@
     const bd = { v: '<span class="bd v">Đã đối chiếu</span>', f: '<span class="bd f">Diễn đàn / suy luận</span>', u: '<span class="bd u">CHƯA XÁC MINH</span>' };
     $('#helpBody').innerHTML = `<p class="small muted">${esc(SRC)}</p>` +
       HELP.map(([t, rows]) => `<h3>${esc(t)}</h3><table class="htab">${rows.map(r => `<tr><td><code>${esc(r[0])}</code><br>${bd[r[2]]}</td><td>${esc(r[1])}</td></tr>`).join('')}</table>`).join('') +
-      `<div class="danger mini">Giới hạn: không mô phỏng đường chạy dao thực của bộ điều khiển; không kiểm tra va chạm đài dao/mâm cặp; không có option máy cụ thể (bộ bắt phôi, cần gạt phôi, ụ NC). Luôn chạy thử.</div>`;
+      `<div class="danger mini">Mô phỏng IGF là hình học 2D (chạy nhanh / chạy dao, phôi, biên dạng, chấu, chống tâm, vượt hành trình). Không phải bộ mô phỏng OSP và không biết hình dao thật. Luôn chạy thử không phôi trên máy.</div>`;
   }
 
   // ---------- IGF ----------
-  let igfStep = 1;
+  let igfStep = 1, PATH = null, igfDidAuto = false;
+  const sim = { play: false, mi: 0, u: 0, speed: 1, raf: 0, last: 0 };
   const EL_VI = { face: 'Mặt đầu (FACE)', long: 'Dọc trục (LONG)', taper: 'Côn (TAPER)', cchf: 'Vát (C-CHF)', rchf: 'Bo tròn (R-CHF)', cw: 'Cung thuận (CW)', ccw: 'Cung ngược (CCW)', jump: 'Nhảy (JUMP)' };
   function igf() { if (!P.igf) P.igf = Object.assign({}, O.DEFAULT_IGF); return P.igf; }
   function numInp(k, v, label) {
@@ -417,10 +448,145 @@
     }
     g.fillStyle = '#546e7a'; g.font = '12px sans-serif'; g.fillText('Z0', X(0) + 2, Y(0) - 4);
   }
+  function stopSim() { sim.play = false; if (sim.raf) cancelAnimationFrame(sim.raf); sim.raf = 0; }
+  function applyIgf() {
+    const d = O.decideProcesses(igf());
+    if (!d.ops.length) return d;
+    const ig = igf();
+    P.settings.stockD = Number(ig.od) || P.settings.stockD;
+    P.settings.stockL = Number(ig.ol) || P.settings.stockL;
+    P.settings.material = ig.material || P.settings.material;
+    P.settings.g50 = Number(ig.g50) || P.settings.g50;
+    if (ig.tailD !== '' && ig.tailD != null) P.settings.tailDia = Number(ig.tailD) || P.settings.tailDia;
+    P.settings.jawLen = Number(ig.jawL2) || P.settings.jawLen;
+    P.settings.jawOd = Number(ig.jawD3) || P.settings.jawOd;
+    if (ig.useCenter && P.settings.tail === 'none') P.settings.tail = 'quill';
+    P.ops = d.ops;
+    simDoneSig = null;
+    renderSettings();
+    return d;
+  }
+  function toolPos() {
+    const mv = PATH && PATH.moves || [];
+    if (!mv.length) return null;
+    if (sim.mi >= mv.length) { const m = mv[mv.length - 1]; return { z: m.z1, r: m.r1, i: m.i, id: m.opId, tail: false, done: true, kind: 'feed' }; }
+    const m = mv[sim.mi];
+    const L = Math.hypot(m.z1 - m.z0, m.r1 - m.r0) || 1;
+    const u = Math.max(0, Math.min(1, sim.u / L));
+    return { z: m.z0 + (m.z1 - m.z0) * u, r: m.r0 + (m.r1 - m.r0) * u, i: m.i, id: m.opId, tail: m.tail, kind: m.kind };
+  }
+  function renderSimChrome() {
+    const chips = $('#simChips'); if (!chips || !PATH) return;
+    chips.innerHTML = P.ops.map((op, i) => `<button type="button" class="${op.on === false ? 'off' : ''}" data-id="${op.id}">${i + 1}. ${esc(O.OPS[op.type] ? O.OPS[op.type].name : op.type)}</button>`).join('');
+    const rows = (PATH.hits || []).map(h => ({ msg: h.msg, at: h.at, kind: h.kind }));
+    (R && R.warnings || []).forEach(w => {
+      if (w.lvl === 'info') return;
+      if (!rows.some(r => r.msg === w.msg)) rows.push({ msg: (w.lvl === 'err' ? 'Lỗi: ' : 'Cảnh báo: ') + w.msg, at: 0, kind: w.lvl, always: true });
+    });
+    const box = $('#simHits');
+    box.innerHTML = rows.length ? `<ul class="wlist" id="hitList">${rows.map(r => `<li class="${r.kind === 'err' ? 'err' : ''}" data-at="${r.at}" data-always="${r.always ? 1 : 0}">${esc(r.msg)}</li>`).join('')}</ul>` : `<p class="hint">Không thấy va chạm chấu, chống tâm, vượt hành trình, khỏa tới tâm hoặc cắt đứt khi chống tâm đang tiến.</p>`;
+  }
+  function drawSim() {
+    const cv = $('#cvSim'); if (!cv || !PATH) return;
+    const g = cv.getContext('2d'), Wd = cv.width, Ht = cv.height;
+    const S = Object.assign({}, O.DEFAULT_SETTINGS, P.settings);
+    const stockR = PATH.blank.r, jawR = Math.max(PATH.chuck.jawR, stockR);
+    const zmin = PATH.chuck.z - 8, zmax = Math.max(12, PATH.blank.z1 + 6);
+    const rmax = jawR + 8;
+    const sc = Math.min((Wd - 24) / Math.max(1, zmax - zmin), (Ht - 24) / (2 * rmax));
+    const X = z => 12 + (z - zmin) * sc, Y = r => Ht / 2 - r * sc;
+    g.clearRect(0, 0, Wd, Ht); g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, Wd, Ht);
+    g.setLineDash([8, 4]); g.strokeStyle = '#9ab'; g.beginPath(); g.moveTo(0, Y(0)); g.lineTo(Wd, Y(0)); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#b0bec5';
+    g.fillRect(X(zmin), Y(jawR), Math.max(1, X(PATH.chuck.z) - X(zmin)), Y(stockR * 0.2) - Y(jawR));
+    g.fillRect(X(zmin), Y(-stockR * 0.2), Math.max(1, X(PATH.chuck.z) - X(zmin)), Y(-jawR) - Y(-stockR * 0.2));
+    if (PATH.chuck.jawLen > 0) {
+      g.fillStyle = '#90a4ae';
+      const x0 = X(PATH.chuck.z), x1 = X(PATH.chuck.z + PATH.chuck.jawLen);
+      g.fillRect(x0, Y(jawR), x1 - x0, Y(stockR) - Y(jawR));
+      g.fillRect(x0, Y(-stockR), x1 - x0, Y(-jawR) - Y(-stockR));
+    }
+    g.fillStyle = '#eceff1';
+    g.fillRect(X(PATH.blank.z0), Y(stockR), X(PATH.blank.z1) - X(PATH.blank.z0), Y(-stockR) - Y(stockR));
+    g.strokeStyle = '#78909c'; g.setLineDash([4, 3]);
+    g.strokeRect(X(PATH.blank.z0), Y(stockR), X(PATH.blank.z1) - X(PATH.blank.z0), Y(-stockR) - Y(stockR));
+    g.setLineDash([]);
+    function strokeMove(m) {
+      g.globalAlpha = 1; g.setLineDash([]);
+      const rapid = m.kind === 'rapid';
+      // Cắt đoạn về điểm thay dao tại khung nhìn — nét chạy nhanh không phủ hết phôi.
+      const cz = z => Math.max(zmin, Math.min(zmax, z));
+      const cr = r => Math.max(-rmax, Math.min(rmax, r));
+      const z0 = cz(m.z0), r0 = cr(m.r0), z1 = cz(m.z1), r1 = cr(m.r1);
+      if (Math.hypot(z1 - z0, r1 - r0) < 0.05) return;
+      g.strokeStyle = rapid ? '#e8750a' : '#1565c0';
+      g.lineWidth = rapid ? 1.3 : 2.6;
+      g.setLineDash(rapid ? [5, 4] : []);
+      [1, -1].forEach(sg => {
+        g.globalAlpha = sg < 0 ? 0.28 : 1;
+        g.beginPath(); g.moveTo(X(z0), Y(sg * r0)); g.lineTo(X(z1), Y(sg * r1)); g.stroke();
+      });
+      g.globalAlpha = 1; g.setLineDash([]); g.lineWidth = 1;
+    }
+    const pos = toolPos();
+    const shown = PATH.moves.slice(0, Math.min(sim.mi, PATH.moves.length));
+    if (sim.mi < PATH.moves.length && pos) shown.push({ z0: PATH.moves[sim.mi].z0, r0: PATH.moves[sim.mi].r0, z1: pos.z, r1: pos.r, kind: PATH.moves[sim.mi].kind });
+    shown.filter(m => m.kind === 'rapid').forEach(strokeMove);
+    shown.filter(m => m.kind !== 'rapid').forEach(strokeMove);
+    g.globalAlpha = 1; g.setLineDash([]); g.lineWidth = 1;
+    if (PATH.finish && PATH.finish.length > 1) {
+      [1, -1].forEach(sg => {
+        g.beginPath(); PATH.finish.forEach((p, i) => { const x = X(p.z), y = Y(sg * p.r); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+        g.strokeStyle = sg > 0 ? '#2e7d32' : '#81c784'; g.lineWidth = sg > 0 ? 2.4 : 1.3; g.stroke();
+      });
+      g.lineWidth = 1;
+    }
+    if (pos && pos.tail && S.tail !== 'none') {
+      g.fillStyle = '#6a1b9acc';
+      g.beginPath(); g.moveTo(X(0), Y(0)); g.lineTo(X(9), Y(PATH.tailDia / 2)); g.lineTo(X(9), Y(-PATH.tailDia / 2)); g.closePath(); g.fill();
+    }
+    (PATH.hits || []).forEach(h => {
+      if (h.at <= sim.mi) {
+        g.strokeStyle = '#c62828'; g.lineWidth = 2;
+        g.beginPath(); g.arc(X(h.z), Y(Math.max(-rmax, Math.min(rmax, h.r))), 7, 0, 7); g.stroke(); g.lineWidth = 1;
+      }
+    });
+    if (pos) {
+      const x = X(Math.max(zmin, Math.min(zmax, pos.z))), y = Y(Math.max(-rmax, Math.min(rmax, pos.r)));
+      g.fillStyle = '#c62828'; g.beginPath(); g.moveTo(x + 9, y); g.lineTo(x - 4, y - 6); g.lineTo(x - 4, y + 6); g.closePath(); g.fill();
+    }
+    const pct = PATH.moves.length ? Math.round(100 * Math.min(sim.mi, PATH.moves.length) / PATH.moves.length) : 0;
+    const op = pos ? P.ops[pos.i] : null;
+    const nm = op && O.OPS[op.type] ? O.OPS[op.type].name : '—';
+    const st = $('#simStatus');
+    if (st) st.textContent = `${pct}% · ${pos && pos.done ? 'đã chạy hết' : sim.play ? 'đang chạy' : 'dừng'} · ${nm}` + (pos && !pos.done && pos.kind ? ` · ${pos.kind === 'rapid' ? 'chạy nhanh' : 'chạy dao'}` : '') + (pos && pos.tail ? ' · có chống tâm' : '');
+    document.querySelectorAll('#simChips button').forEach(b => b.classList.toggle('on', !!(pos && b.dataset.id === pos.id)));
+    document.querySelectorAll('#hitList li').forEach(li => { li.style.opacity = (li.dataset.always === '1' || Number(li.dataset.at) <= sim.mi) ? '1' : '0.4'; });
+  }
+  function finishPlay() {
+    stopSim(); if (!PATH) return; sim.mi = PATH.moves.length; sim.u = 0;
+    simDoneSig = projectSig(); drawSim(); paintGate(); toast('Đã mô phỏng xong — có thể xuất mã');
+  }
+  function frame(ts) {
+    if (!sim.play || !PATH) return;
+    const dt = Math.min(0.05, (ts - (sim.last || ts)) / 1000); sim.last = ts;
+    const m = PATH.moves[sim.mi];
+    if (!m) { finishPlay(); return; }
+    const L = Math.max(0.15, Math.hypot(m.z1 - m.z0, m.r1 - m.r0));
+    sim.u += (m.kind === 'rapid' ? 220 : 55) * sim.speed * dt;
+    if (sim.u >= L) { sim.u = 0; sim.mi++; if (sim.mi >= PATH.moves.length) { finishPlay(); return; } }
+    drawSim(); sim.raf = requestAnimationFrame(frame);
+  }
+  function enterSim(reset) {
+    stopSim();
+    PATH = O.buildToolpath(P);
+    if (reset) { sim.mi = 0; sim.u = 0; }
+    renderSimChrome(); drawSim();
+  }
   function renderIgf() {
     const root = $('#igfRoot'); if (!root) return;
     const ig = igf(), M = O.matOf(ig);
-    const steps = [['1', 'Phôi'], ['2', 'Hình'], ['3', 'Nguyên công'], ['4', 'Tạo mã']];
+    const steps = [['1', 'Phôi'], ['2', 'Hình'], ['3', 'Nguyên công'], ['4', 'Mô phỏng'], ['5', 'Tạo mã']];
     let body = '';
     if (igfStep === 1) {
       body = `<p class="hint">Bước này là màn BLANK/SETUP của IGF: vật liệu (MATERIAL), hình phôi (SHAPE), mốc Z (ZERO POINT REFERENCE) và kẹp (ID/OD GRIP). Số liệu cắt là giá trị xưởng — sách chỉ liệt kê các mục, không in bảng số của máy.</p>
@@ -452,8 +618,13 @@
         <div id="elList">${(ig.elems || []).map(elCard).join('') || '<p class="empty">Chưa có đoạn nào. Thêm FACE, LONG… hoặc nạp ví dụ trong sách.</p>'}</div>
         <div class="typegrid igfadd">${Object.keys(EL_VI).map(k => `<button type="button" class="typebtn" data-addel="${k}">${esc(EL_VI[k])}</button>`).join('')}</div>`;
     } else if (igfStep === 3) {
-      const d = O.decideProcesses(ig);
-      body = `<p class="hint">PROCESS DECIDE: IGF tự chia vùng gia công, chọn chu trình, dao và chế độ cắt từ biên dạng + vật liệu. Sửa chế độ cắt của vật liệu bên dưới rồi xem lại danh sách. Bấm sang bước 4 để ghi vào danh sách nguyên công.</p>
+      if (P.ops.length) igfDidAuto = true;
+      else if ((ig.elems || []).length && !igfDidAuto) {
+        const d = applyIgf();
+        if (d.ops && d.ops.length) { igfDidAuto = true; save(); }
+      }
+      const notes = O.decideProcesses(ig).notes || [];
+      body = `<p class="hint">PROCESS DECIDE dùng chung danh sách với tab Nguyên công. Sửa, thêm, xóa, nhân bản, đảo thứ tự, bật/tắt, đổi dao và chế độ cắt — chương trình và mô phỏng làm lại từ danh sách này. “Quyết định lại” ghi đè danh sách từ biên dạng.</p>
         <h3>Chế độ cắt ${esc(ig.material)} (MATERIAL DATA)</h3>
         <div class="grid2">
           ${numInp('vr', M.vr, 'Vc thô m/ph (CUT. SPEED VR)')}
@@ -464,20 +635,49 @@
           ${numInp('vf', M.vf, 'Vc tinh (FINISH CUTTING SPEED VF)')}
           ${numInp('ff', M.ff, 'Bước tiến tinh (FEEDRATE F)')}
         </div>
-        <h3>Nguyên công sẽ tạo (${d.ops.length})</h3>
-        ${d.notes.map(n => `<p class="hint">⚠ ${esc(n)}</p>`).join('')}
-        <ol class="ops">${d.ops.map((o, i) => `<li class="op"><div class="oph"><span class="opn">${i + 1}</span><div class="opt"><b>${esc(O.OPS[o.type].icon)} ${esc(O.OPS[o.type].name)}</b><small>${esc(summary(o))}</small></div></div></li>`).join('') || '<li class="empty">Chưa đủ biên dạng.</li>'}</ol>`;
+        <div class="btns"><button type="button" class="b2" id="igfRedecide">Quyết định lại từ biên dạng</button><button type="button" class="b1" id="igfAdd">＋ Thêm nguyên công</button></div>
+        ${notes.map(n => `<p class="hint">⚠ ${esc(n)}</p>`).join('')}
+        <h3>Nguyên công (${P.ops.length})</h3>
+        <ol class="ops" id="igfOps">${P.ops.map((op, i) => {
+          const m = O.OPS[op.type]; const ws = R ? R.warnings.filter(w => w.op === op.id) : [];
+          const cls = ws.some(w => w.lvl === 'err') ? 'err' : ws.some(w => w.lvl === 'warn') ? 'wrn' : '';
+          return `<li class="op ${cls} ${op.on === false ? 'off' : ''}" data-id="${op.id}"><div class="oph"><span class="opn">${i + 1}</span><div class="opt"><b>${m.icon} ${esc(m.name)}</b><small>${esc(summary(op))}</small></div></div>
+            ${ws.length ? `<ul class="opw">${ws.map(w => `<li class="${w.lvl}">${w.lvl === 'err' ? '⛔' : '⚠'} ${esc(w.msg)}</li>`).join('')}</ul>` : ''}
+            <div class="opb"><button type="button" data-a="up" aria-label="Lên">↑</button><button type="button" data-a="dn" aria-label="Xuống">↓</button><button type="button" data-a="ed">Sửa</button><button type="button" data-a="cp">Chép</button><button type="button" data-a="tg">${op.on === false ? 'Bật' : 'Tắt'}</button><button type="button" data-a="rm" aria-label="Xóa">🗑</button></div></li>`;
+        }).join('') || '<li class="empty">Chưa có nguyên công. Thêm tay hoặc quyết định từ biên dạng.</li>'}</ol>`;
+    } else if (igfStep === 4) {
+      body = `<p class="hint">Mô phỏng trước khi xuất mã. Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. Phôi xám, biên dạng tinh xanh lá, chấu xám đậm, chống tâm tím khi nòng đang tiến, tam giác đỏ = vị trí dao.</p>
+        <div class="simbar">
+          <button type="button" class="b1" id="simPlay">▶ Chạy</button>
+          <button type="button" class="b2" id="simPause">⏸ Dừng</button>
+          <button type="button" class="b2" id="simStep">Bước</button>
+          <button type="button" class="b2" id="simReset">⟲ Đầu</button>
+        </div>
+        <label class="fld"><span>Tốc độ <b id="simSpdLab">${sim.speed}×</b></span><input id="simSpeed" type="range" min="0.25" max="4" step="0.25" value="${sim.speed}"></label>
+        <p id="simStatus" class="small"></p>
+        <div class="chips" id="simChips"></div>
+        <div class="cvwrap"><div class="cvt">Mặt cắt dọc · vùng phôi (không vẽ điểm thay dao)</div><canvas id="cvSim" width="760" height="420"></canvas></div>
+        <div class="legend"><span class="lg h">Chạy nhanh</span><span class="lg p">Chạy dao</span><span class="lg f">Biên dạng tinh</span><span class="lg t">Chống tâm</span></div>
+        <div id="simHits"></div>`;
     } else {
-      const d = O.decideProcesses(ig);
-      body = `<p class="hint">PROGRAM CREATE: ghi các nguyên công vừa quyết định vào tab Nguyên công và sinh file .MIN (có dòng O + tên). Trên máy IGF, phải mô phỏng rồi chạy không phôi trước khi cắt — LE32-239, mục an toàn.</p>
-        <div class="danger slim">⚠ Sau khi tạo mã, vẫn phải chạy thử không phôi hoặc mô phỏng trên OSP trước khi cắt.</div>
-        <p>Sẽ ghi <b>${d.ops.length}</b> nguyên công cho phôi Ø${esc(ig.od)} × ${esc(ig.ol)} ${esc(ig.material)}. Danh sách nguyên công hiện có (${P.ops.length}) sẽ bị thay.</p>
-        <button type="button" class="b1" id="igfCreate">Tạo chương trình (PROGRAM CREATE)</button>`;
+      body = `<p class="hint">PROGRAM CREATE: mã dưới đây là compile() của đúng danh sách nguyên công đang dùng (tab Nguyên công). Xuất .MIN sau khi mô phỏng; nếu chưa chạy hết, ứng dụng sẽ hỏi lại.</p>
+        <div class="simgate danger slim"></div>
+        <p>Phôi Ø${esc(ig.od)} × ${esc(ig.ol)} ${esc(ig.material)} · ${P.ops.length} nguyên công · tệp theo tên chương trình trong Thiết lập.</p>
+        <div class="btns">
+          <button type="button" class="b1" id="igfCopy">Sao chép</button>
+          <button type="button" class="b1" id="igfDl">Tải .MIN</button>
+          <button type="button" class="b2" id="igfGoOps">Mở tab Nguyên công</button>
+        </div>
+        <div id="igfCodeWarn"></div>
+        <pre id="igfCode" class="code"></pre>`;
     }
     root.innerHTML = `<div class="igfsteps">${steps.map(([n, t]) => `<button type="button" data-step="${n}" class="${Number(n) === igfStep ? 'on' : ''}">${n} ${esc(t)}</button>`).join('')}</div>
       <div class="btns"><button type="button" class="b2" id="igfDemo">Nạp ví dụ trong sách (TEST1)</button></div>
       <form id="igfForm" class="form" autocomplete="off">${body}</form>`;
     if (igfStep === 2) drawIgf();
+    if (igfStep === 4) enterSim(true);
+    if (igfStep === 5 && R) renderCode();
+    else paintGate();
     const form = $('#igfForm');
     const read = () => {
       form.querySelectorAll('[data-k]').forEach(el => {
@@ -493,6 +693,11 @@
       });
     };
     form.oninput = form.onchange = ev => {
+      if (ev.target && ev.target.id === 'simSpeed') {
+        sim.speed = Number(ev.target.value) || 1;
+        const lab = $('#simSpdLab'); if (lab) lab.textContent = sim.speed + '×';
+        return;
+      }
       if (ev.target && ev.target.dataset && ev.target.dataset.k && igfStep === 2 && ev.target.closest('.el')) {
         read(); save(); drawIgf(); return;
       }
@@ -502,37 +707,60 @@
     };
   }
   const igfRootClick = e => {
-    const st = e.target.closest('[data-step]'); if (st) { igfStep = Number(st.dataset.step); renderIgf(); return; }
+    const st = e.target.closest('[data-step]'); if (st) { if (Number(st.dataset.step) !== 4) stopSim(); igfStep = Number(st.dataset.step); renderIgf(); return; }
     if (e.target.id === 'igfDemo') {
-      P.igf = O.igfTutorial(); igfStep = 2; save(); renderIgf(); toast('Đã nạp ví dụ TEST1 (LE32-239)'); return;
+      if (P.ops.length && !confirm('Thay danh sách nguyên công bằng ví dụ TEST1 trong sách?')) return;
+      P.igf = O.igfTutorial();
+      P.settings.progName = 'TEST1';
+      P.settings.comment = 'IGF TEST1';
+      const d = applyIgf();
+      igfStep = 2; save(); renderIgf(); toast('Đã nạp TEST1 (' + ((d && d.ops) ? d.ops.length : 0) + ' nguyên công)'); return;
     }
     const add = e.target.closest('[data-addel]'); if (add) { igf().elems = igf().elems || []; igf().elems.push({ t: add.dataset.addel }); save(); renderIgf(); return; }
     const del = e.target.closest('[data-del]'); if (del) { igf().elems.splice(Number(del.dataset.del), 1); save(); renderIgf(); return; }
-    if (e.target.id === 'igfCreate') {
-      const d = O.decideProcesses(igf());
-      if (!d.ops.length) { alert('Chưa có nguyên công. Hãy định nghĩa biên dạng ở bước 2.'); return; }
-      if (P.ops.length && !confirm('Thay danh sách nguyên công hiện tại bằng kết quả IGF?')) return;
-      const ig = igf();
-      P.settings.stockD = Number(ig.od) || P.settings.stockD;
-      P.settings.stockL = Number(ig.ol) || P.settings.stockL;
-      P.settings.material = ig.material || P.settings.material;
-      P.settings.g50 = Number(ig.g50) || P.settings.g50;
-      P.settings.tailDia = Number(ig.tailD) || P.settings.tailDia;
-      if (ig.useCenter && P.settings.tail === 'none') P.settings.tail = 'quill';
-      P.ops = d.ops; renderSettings(); save(); toast('Đã tạo ' + d.ops.length + ' nguyên công');
-      document.querySelector('.tabs button[data-v="v-ops"]').click();
+    const opb = e.target.closest('#igfOps button[data-a]');
+    if (opb) { actOp(opb.dataset.a, opb.closest('li.op').dataset.id); return; }
+    if (e.target.id === 'igfRedecide') {
+      const d0 = O.decideProcesses(igf());
+      if (!d0.ops.length) { alert('Chưa đủ biên dạng ở bước Hình.'); return; }
+      if (P.ops.length && !confirm('Ghi đè danh sách nguyên công bằng kết quả quyết định từ biên dạng?')) return;
+      const d = applyIgf(); save(); renderIgf(); toast('Đã quyết định ' + d.ops.length + ' nguyên công'); return;
     }
+    if (e.target.id === 'igfAdd') { $('#fab').click(); return; }
+    if (e.target.id === 'simPlay') {
+      if (!PATH || !PATH.moves.length) { toast('Không có đường dao'); return; }
+      if (sim.mi >= PATH.moves.length) { sim.mi = 0; sim.u = 0; }
+      sim.play = true; sim.last = 0; sim.raf = requestAnimationFrame(frame); return;
+    }
+    if (e.target.id === 'simPause') { stopSim(); drawSim(); return; }
+    if (e.target.id === 'simStep') {
+      stopSim(); if (!PATH || !PATH.moves.length) return;
+      if (sim.mi >= PATH.moves.length) { sim.mi = 0; sim.u = 0; }
+      else { sim.mi++; sim.u = 0; if (sim.mi >= PATH.moves.length) { simDoneSig = projectSig(); paintGate(); toast('Đã mô phỏng xong — có thể xuất mã'); } }
+      drawSim(); return;
+    }
+    if (e.target.id === 'simReset') { stopSim(); sim.mi = 0; sim.u = 0; drawSim(); return; }
+    if (e.target.id === 'igfCopy') { $('#btnCopy').click(); return; }
+    if (e.target.id === 'igfDl') { $('#btnDl').click(); return; }
+    if (e.target.id === 'igfGoOps') { document.querySelector('.tabs button[data-v="v-ops"]').click(); }
   };
 
   // ---------- chung ----------
   function refresh() {
     R = O.compile(P); renderOps(); renderCode(); renderPrevSel();
     if ($('#v-prev').classList.contains('on')) drawPreview();
+    if (igfStep === 4 && $('#v-igf').classList.contains('on') && !sim.play && $('#cvSim')) {
+      const prev = sim.mi;
+      PATH = O.buildToolpath(P);
+      if (prev > PATH.moves.length) sim.mi = PATH.moves.length;
+      renderSimChrome(); drawSim();
+    }
   }
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
     document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
     document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === b.dataset.v));
     $('#fab').style.display = b.dataset.v === 'v-ops' ? '' : 'none';
+    if (b.dataset.v !== 'v-igf') stopSim();
     if (b.dataset.v === 'v-prev') drawPreview();
     if (b.dataset.v === 'v-igf') renderIgf();
     window.scrollTo(0, 0);
@@ -552,10 +780,19 @@
   let hv = { '#code': 'v-code', '#prev': 'v-prev', '#set': 'v-set', '#help': 'v-help' }[location.hash];
   if (/^#igf/.test(location.hash || '')) {
     hv = 'v-igf';
-    const m = location.hash.match(/^#igf([1-4])/);
+    const m = location.hash.match(/igf([1-5])/);
     if (m) igfStep = Number(m[1]);
-    if (/demo/.test(location.hash) || /^#igf[2-4]/.test(location.hash)) {
-      if (!(igf().elems || []).length) P.igf = O.igfTutorial();
+    if (/demo/.test(location.hash) || /igf[2-5]/.test(location.hash)) {
+      if (!(igf().elems || []).length) {
+        P.igf = O.igfTutorial();
+        if (/demo/.test(location.hash)) {
+          P.settings.progName = 'TEST1';
+          P.settings.comment = 'IGF TEST1';
+          applyIgf();
+          renderSettings();
+          save();
+        }
+      }
     }
   }
   if (hv) document.querySelector(`.tabs button[data-v="${hv}"]`).click();

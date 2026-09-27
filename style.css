@@ -69,7 +69,7 @@ canvas{width:100%;height:auto;display:block;touch-action:manipulation}
 .legend{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
 .lg{padding:2px 8px;border-radius:8px;background:#fff}
 .lg:before{content:"";display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle}
-.lg.p:before{background:#1565c0}.lg.r:before{background:#9aa9b5}.lg.c:before{background:#c62828}.lg.h:before{background:#e8750a}.lg.t:before{background:#6a1b9a}
+.lg.p:before{background:#1565c0}.lg.r:before{background:#9aa9b5}.lg.c:before{background:#c62828}.lg.h:before{background:#e8750a}.lg.t:before{background:#6a1b9a}.lg.f:before{background:#2e7d32}
 .sheet{position:fixed;inset:0;background:#0007;z-index:20;display:flex;align-items:flex-end}
 .sheet[hidden]{display:none}
 .sheetin{background:var(--bg);width:100%;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:0 12px 24px}
@@ -90,8 +90,17 @@ canvas{width:100%;height:auto;display:block;touch-action:manipulation}
 @media (min-width:760px){main{max-width:760px;margin:0 auto}.typegrid{grid-template-columns:1fr 1fr 1fr}}
 .wdet{background:#fff;border-radius:10px;padding:8px 10px;margin:8px 0;font-size:14px}.wdet summary{font-weight:600;color:#a04b00}
 .igfsteps{display:flex;gap:4px;margin:4px 0 8px}
-.igfsteps button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 2px;font-size:12px;color:var(--mut)}
+.igfsteps button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 1px;font-size:10.5px;color:var(--mut)}
 .igfsteps button.on{background:var(--pri);color:#fff;border-color:var(--pri);font-weight:600}
+.op.sim{outline:2px solid var(--acc)}
+.simbar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.simbar button{flex:1;min-width:64px}
+.chips{display:flex;gap:6px;overflow:auto;padding:2px 0 8px}
+.chips button{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 10px;font-size:12px;color:var(--ink)}
+.chips button.on{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+.chips button.off{opacity:.45}
+.gateok{background:#e8f5e9;border-left-color:var(--ok);color:#1b5e20}
+#igfCode{max-height:420px}
 .el{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;margin:8px 0}
 .elh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 .elh button{border:0;background:#fde;border-radius:8px;padding:6px 10px}
