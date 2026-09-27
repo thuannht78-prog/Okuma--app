@@ -1,5 +1,6 @@
 /* Okuma LB3000EX II / OSP-P300L — bộ sinh chương trình NC (không backend)
- * Mọi cú pháp dựa trên sách lập trình OSP-P200L (5238-E) + ví dụ diễn đàn.
+ * Cú pháp đối chiếu: Advanced One-Touch IGF-L OSP-P500L (LE32-238-R1, LE32-239-R1),
+ * Okuma Basic Programming Manual CNC Lathe (June 2005), và tờ ví dụ dao động lực.
  * PHẢI chạy thử (dry run) / mô phỏng trên máy trước khi cắt thật. */
 (function (root) {
   'use strict';
@@ -244,7 +245,10 @@
     const push = (...a) => a.forEach(s => L.push(s));
     const warn = (lvl, msg) => W.push({ lvl, msg, op: ctx.curOp ? ctx.curOp.id : null, idx: ctx.idx });
     const cool = s => S.coolant ? s : null;
-    const xv = r => S.x138 === 'radius' ? r : 2 * r;   // X trong chế độ G138
+    const xv = r => S.x138 === 'radius' ? r : 2 * r;   // X trong chế độ G138: bán kính (LE32-238 tr.353)
+    function note138() {
+      if (S.x138 !== 'radius') warn('warn', 'G138: sách IGF LE32-238 tr.353 yêu cầu X theo BÁN KÍNH đến khi G136. Thiết lập đang xuất theo ĐƯỜNG KÍNH.');
+    }
     const tcode = t => 'T' + pad2(t) + pad2(t) + pad2(t);
 
     function toolStart(t, title) {
@@ -292,7 +296,10 @@
     function liveEnd() { push('M12', 'M146', 'M109', 'G95'); }
 
     // ---- header
-    if (S.dollar) push(`$${asc(S.progName).replace(/[^A-Z0-9]/g, '') || 'PROG'}.MIN%`);
+    const pname = (asc(S.progName).replace(/[^A-Z0-9]/g, '') || 'PROG').slice(0, 8);
+    if ((asc(S.progName).replace(/[^A-Z0-9]/g, '') || 'PROG').length > 8) warn('warn', 'Tên chương trình (PROGRAM NAME) dài hơn 8 ký tự — IGF LE32-238 tr.301 chỉ cho phép tối đa 8. Đã cắt còn ' + pname + '.');
+    if (S.dollar) push(`$${pname}.MIN%`);
+    push('O' + pname);
     push(cm(S.progName + ' - ' + S.comment),
       cm('MAY OKUMA LB3000EX II - OSP-P300L'),
       cm(`PHOI D${f(stockD)} L${f(S.stockL)} ${S.material || ''}`),
@@ -418,7 +425,8 @@
         toolStart(op.tool, `${op.cyc} MAT DAU ${holes.length} LO`);
         liveStart(sb);
         if (op.pos === 'xyy') {
-          push('M146', `G00 C${f(num(op.c0, 0))}`, 'M147', 'G138', 'G17');
+          push('M146', `G138 C${f(num(op.c0, 0))}`, 'M147', 'G17');
+          note138();
           const c = f(num(op.c0, 0));
           const h0 = holes[0];
           push(`G00 X${f(xv(h0.x))} Y${f(h0.y)} Z${f(zst)}`);
@@ -427,7 +435,6 @@
             else push(`X${f(xv(h.x))} Y${f(h.y)}`);
           });
           push('G180', `G00 X${f(xv(h0.x))} Z${f(zst)}`, 'G00 Y0', 'G136');
-          warn('warn', 'Khoan mặt đầu dùng trục Y (G138): X đang xuất theo ' + (S.x138 === 'radius' ? 'BÁN KÍNH' : 'ĐƯỜNG KÍNH') + ' – CHƯA XÁC MINH trên OSP-P300L, kiểm tra kỹ.');
         } else {
           push(`G00 X${f(holes[0].X)} Z${f(zst)} C${f(holes[0].C)}`);
           holes.forEach((h, i) => {
@@ -453,11 +460,11 @@
         liveStart(sb);
         if (y !== 0) {
           push('G138', 'G19');
+          note138();
           const xsv = S.x138 === 'radius' ? xs / 2 : xs, xbv = S.x138 === 'radius' ? xb / 2 : xb, Iv = S.x138 === 'radius' ? I / 2 : I;
           push(`G00 X${f(xsv)} Y${f(y)} Z${f(zs[0])}`);
           zs.forEach(z => angs.forEach(c => push(`${op.cyc} X${f(xbv)} Y${f(y)} Z${f(z)} C${f(c)} I${f(Iv)} F${f(F)}${extra()}`)));
           push('G180', `G00 X${f(xsv)} Z${f(zs[zs.length - 1])}`, 'G00 Y0', 'G136');
-          warn('warn', 'Khoan hướng kính lệch tâm Y (G138 G19): giá trị X/I trong G138 CHƯA XÁC MINH (bán kính hay đường kính) – kiểm tra.');
         } else {
           push(`G00 X${f(xs)} Z${f(zs[0])} C${f(angs[0])}`);
           let first = true;
@@ -526,7 +533,8 @@
         const n = Math.max(0, Math.ceil((za - zb2) / so - 1e-9)); for (let i = 0; i <= n; i++) zl.push(n ? za + (zb2 - za) * i / n : za);
         if (z1 < 0) warn('warn', 'Mặt phẳng kín hai đầu: góc trong sẽ có bán kính = bán kính dao.');
         toolStart(op.tool, 'PHAY MAT PHANG CANH C' + f(op.c)); liveStart(op.sb);
-        push('M146', `G00 C${f(op.c)}`, 'M147', 'G138', 'G19');
+        push('M146', `G138 C${f(op.c)}`, 'M147', 'G19');
+        note138();
         push(`G00 X${f(xv(R + 5))} Y${f(-half)} Z${f(zl[0])}`);
         let x = R, side = -1;
         while (x > xf + 1e-6) {
@@ -535,7 +543,6 @@
           zl.forEach((zz, i) => { if (i > 0) push(`G01 Z${f(zz)} F${f(op.feed)}`); side = -side; push(`G01 Y${f(side * half)} F${f(op.feed)}`); });
         }
         push(`G00 X${f(xv(R + 5))}`, 'G00 Y0', 'G136');
-        warn('warn', 'Phay trục Y (G138): X đang xuất theo ' + (S.x138 === 'radius' ? 'BÁN KÍNH' : 'ĐƯỜNG KÍNH') + ' – CHƯA XÁC MINH, chỉnh ở Thiết lập nếu máy dùng kiểu khác.');
         liveEnd(); toolEnd();
       },
       tailOn(op) { if (ctx.tail) warn('warn', 'Chống tâm đã tiến rồi.'); else tailAdvance(op.note); },
@@ -545,8 +552,8 @@
     };
     function millFaceStart(op, title) {
       toolStart(op.tool, title + ' C' + f(op.c)); liveStart(op.sb);
-      push('M146', `G00 C${f(op.c)}`, 'M147', 'G138', 'G17');
-      warn('warn', 'Phay trục Y (G138 G17): X đang xuất theo ' + (S.x138 === 'radius' ? 'BÁN KÍNH' : 'ĐƯỜNG KÍNH') + ' – CHƯA XÁC MINH trên OSP-P300L.');
+      push('M146', `G138 C${f(op.c)}`, 'M147', 'G17');
+      note138();
     }
     function millFaceEnd() { push('G00 Y0', 'G136'); liveEnd(); toolEnd(); }
 
@@ -573,7 +580,7 @@
       const def = [`${nm} G81`, `G00 X${f(pts[0].x)}`];
       pts.forEach((p, i) => {
         if (i === 0) { def.push(`G01${op.comp ? ' ' + g4 : ''} Z${f(p.z)} F${f(op.ff)}`); return; }
-        if (p.t !== 'L' && num(p.r, 0) > 0) def.push(`${p.t === 'CW' ? 'G02' : 'G03'} X${f(p.x)} Z${f(p.z)} L${f(p.r)}`);
+        if (p.t !== 'L' && num(p.r, 0) > 0) def.push(`${p.t === 'CW' ? 'G02' : 'G03'} X${f(p.x)} Z${f(p.z)} I${f(p.r)}`);
         else def.push(`G01 X${f(p.x)} Z${f(p.z)}`);
       });
       const needExit = inner ? last.x > sx : last.x < sx;
@@ -631,6 +638,162 @@
     return { settings: Object.assign({}, DEFAULT_SETTINGS, { stockD: 60, stockL: 120 }), ops };
   }
 
-  const API = { OPS, DEFAULT_SETTINGS, newOp, compile, sampleProject, profilePoly, parseList, parsePts, asc, f };
+  // ---------------- IGF (Advanced One-Touch IGF-L) ----------------
+  // Luồng: MATERIAL + BLANK/SETUP → TURNING SHAPE → PROCESS DECIDE → PROGRAM CREATE.
+  const MATERIALS = {
+    S45C: { name: 'S45C', vr: 180, fr: 0.25, dx: 3, lx: 0.2, lz: 0.1, vf: 220, ff: 0.12, gv: 110, gf: 0.08 },
+    SCM440: { name: 'SCM440', vr: 160, fr: 0.22, dx: 2.5, lx: 0.2, lz: 0.1, vf: 200, ff: 0.1, gv: 100, gf: 0.07 },
+    SUS304: { name: 'SUS304', vr: 120, fr: 0.15, dx: 2, lx: 0.15, lz: 0.08, vf: 150, ff: 0.08, gv: 80, gf: 0.05 },
+    AL: { name: 'AL', vr: 300, fr: 0.3, dx: 4, lx: 0.2, lz: 0.1, vf: 400, ff: 0.15, gv: 200, gf: 0.1 },
+    FC250: { name: 'FC250', vr: 140, fr: 0.2, dx: 3, lx: 0.2, lz: 0.1, vf: 160, ff: 0.1, gv: 90, gf: 0.07 }
+  };
+  const DEFAULT_IGF = {
+    material: 'S45C', mat: null,
+    blankShape: 'round', od: 100, ol: 82,
+    blankId: 'none', id: 0, idDepth: 0,
+    zeroRef: 'left', zeroPos: 0, g50: 2500,
+    grip: 'od', jawL2: 20, jawD3: 75,
+    useCenter: false, tailD: 20, uniformH: 1,
+    sx: 0, sz: 80, dir: 'CCW',
+    roughT: 1, finishT: 2, boreT: 7,
+    elems: []
+  };
+  function igfTutorial() {
+    return Object.assign({}, DEFAULT_IGF, {
+      material: 'S45C', od: 100, ol: 82, zeroRef: 'left', zeroPos: 0, g50: 2500,
+      grip: 'od', jawL2: 20, jawD3: 75, useCenter: false,
+      sx: 0, sz: 80, dir: 'CCW', roughT: 1, finishT: 2,
+      elems: [
+        { t: 'face', x: 60 },
+        { t: 'cchf', c: 1 },
+        { t: 'long', z: 55 },
+        { t: 'taper', x: 70, ang: 165 },
+        { t: 'long', z: 25 },
+        { t: 'rchf', r: 5 },
+        { t: 'face', x: 100 },
+        { t: 'jump' }
+      ]
+    });
+  }
+  function matOf(igf) {
+    const base = MATERIALS[igf.material] || MATERIALS.S45C;
+    return Object.assign({}, base, igf.mat || {});
+  }
+  function rightFaceZ(igf) {
+    const ol = num(igf.ol, 0), zp = num(igf.zeroPos, 0);
+    return igf.zeroRef === 'left' ? ol - zp : zp;
+  }
+  function toGenZ(z, igf) { return z - rightFaceZ(igf); }
+
+  function cornerCut(p0, p1, p2, kind, val) {
+    const d1 = { z: p1.z - p0.z, r: p1.r - p0.r }, d2 = { z: p2.z - p1.z, r: p2.r - p1.r };
+    const l1 = Math.hypot(d1.z, d1.r), l2 = Math.hypot(d2.z, d2.r);
+    if (l1 < 1e-9 || l2 < 1e-9) return null;
+    const u1 = { z: d1.z / l1, r: d1.r / l1 }, u2 = { z: d2.z / l2, r: d2.r / l2 };
+    const cross = u1.z * u2.r - u1.r * u2.z;
+    const cos = Math.max(-1, Math.min(1, u1.z * u2.z + u1.r * u2.r));
+    const ang = Math.acos(cos);
+    if (ang < 1e-3 || Math.abs(Math.PI - ang) < 1e-3) return null;
+    const C = Math.abs(num(val, 0));
+    if (C <= 0) return null;
+    const tlen = kind === 'r' ? C / Math.tan(ang / 2) : C;
+    if (tlen >= l1 - 1e-6 || tlen >= l2 - 1e-6) return null;
+    const a = { z: p1.z - u1.z * tlen, r: p1.r - u1.r * tlen };
+    const b = { z: p1.z + u2.z * tlen, r: p1.r + u2.r * tlen };
+    const cw = cross < 0;
+    return { a, b, cw, r: kind === 'r' ? C : 0 };
+  }
+  function resolveElems(igf, elems, sx, sz) {
+    const notes = [];
+    const raw = [{ z: num(sz, 0), r: num(sx, 0) / 2, arc: null }];
+    let pend = null;
+    elems.forEach(e => {
+      if (!e || e.t === 'jump') return;
+      if (e.t === 'cchf' || e.t === 'rchf') { pend = e; return; }
+      const cur = raw[raw.length - 1];
+      let nz = cur.z, nr = cur.r, arc = null;
+      if (e.t === 'face') { nr = num(e.x, cur.r * 2) / 2; if (e.z !== '' && e.z != null) nz = num(e.z, cur.z); }
+      else if (e.t === 'long') { nz = num(e.z, cur.z); if (e.x !== '' && e.x != null) nr = num(e.x, cur.r * 2) / 2; }
+      else if (e.t === 'taper') {
+        const hasX = e.x !== '' && e.x != null, hasZ = e.z !== '' && e.z != null, hasA = e.ang !== '' && e.ang != null;
+        if (hasX && hasZ) { nr = num(e.x) / 2; nz = num(e.z); }
+        else if (hasX && hasA) {
+          const ang = num(e.ang) * Math.PI / 180, dr = num(e.x) / 2 - cur.r;
+          const s = Math.sin(ang);
+          nr = num(e.x) / 2;
+          nz = Math.abs(s) < 1e-6 ? cur.z : cur.z + dr * Math.cos(ang) / s;
+        } else { if (hasX) nr = num(e.x) / 2; if (hasZ) nz = num(e.z); }
+      } else if (e.t === 'cw' || e.t === 'ccw') {
+        nr = num(e.x, cur.r * 2) / 2; nz = num(e.z, cur.z);
+        arc = { t: e.t === 'cw' ? 'CW' : 'CCW', r: num(e.r, 0) };
+      } else return;
+      if (pend && raw.length >= 2) {
+        const cut = cornerCut(raw[raw.length - 2], cur, { z: nz, r: nr }, pend.t === 'rchf' ? 'r' : 'c', pend.t === 'rchf' ? pend.r : pend.c);
+        if (cut) {
+          raw.pop();
+          raw.push({ z: cut.a.z, r: cut.a.r, arc: null });
+          raw.push({ z: cut.b.z, r: cut.b.r, arc: cut.r ? { t: cut.cw ? 'CW' : 'CCW', r: cut.r } : null });
+        } else notes.push(pend.t === 'rchf' ? 'Bo tròn (R-CHF) không đặt được — cạnh quá ngắn.' : 'Vát (C-CHF) không đặt được — cạnh quá ngắn.');
+        pend = null;
+      } else if (pend) { notes.push('Vát/bo không đứng đầu biên dạng (IGF: không nối với điểm đầu).'); pend = null; }
+      raw.push({ z: nz, r: nr, arc });
+    });
+    if (pend) notes.push('Vát/bo cuối biên dạng chưa có đoạn kế tiếp.');
+    const pts = raw.map((p, i) => ({ x: Math.round(p.r * 2 * 1000) / 1000, z: Math.round(p.z * 1000) / 1000, t: i && p.arc ? p.arc.t : 'L', r: i && p.arc ? p.arc.r : '' }));
+    return { pts, notes };
+  }
+  function shapePreview(igf) {
+    const g = igf || DEFAULT_IGF;
+    const sh = resolveElems(g, g.elems || [], g.sx, g.sz);
+    const pts = sh.pts.map(p => ({ x: p.x, z: toGenZ(p.z, g), t: p.t, r: p.r }));
+    return { pts, notes: sh.notes, zRight: 0, blankR: num(g.od, 0) / 2, blankL: num(g.ol, 0) };
+  }
+  function monotonicX(pts, inner) {
+    for (let i = 1; i < pts.length; i++) {
+      const bad = inner ? pts[i].x > pts[i - 1].x + 1e-6 : pts[i].x < pts[i - 1].x - 1e-6;
+      if (bad) return false;
+    }
+    return true;
+  }
+  function decideProcesses(igf) {
+    const g = Object.assign({}, DEFAULT_IGF, igf || {});
+    const M = matOf(g);
+    const sh = resolveElems(g, g.elems || [], g.sx, g.sz);
+    const notes = sh.notes.slice();
+    if (sh.pts.length < 2) return { ops: [], notes: notes.concat(['Biên dạng (TURNING SHAPE) cần ít nhất một đoạn sau điểm đầu.']), preview: [] };
+    let pts = sh.pts.map(p => ({ x: p.x, z: toGenZ(p.z, g), t: p.t, r: p.r }));
+    const zMax = Math.max(...pts.map(p => p.z));
+    if (zMax < -1e-6 || zMax > 1e-6) pts = pts.map(p => ({ x: p.x, z: Math.round((p.z - zMax) * 1000) / 1000, t: p.t, r: p.r }));
+    const faceStock = Math.max(0, Math.round((-zMax) * 1000) / 1000);
+    const ops = [];
+    const add = (type, patch) => { const o = newOp(type); Object.assign(o, patch); ops.push(o); };
+    if (faceStock > 0.02) add('facing', { tool: g.roughT, vc: M.vr, feed: M.fr, ffeed: M.ff, zStock: faceStock, doc: Math.max(0.5, M.dx / 2), finish: Math.min(0.2, faceStock), xEnd: Math.min(0, pts[0].x) - 1 });
+    if (g.useCenter) {
+      add('drill', { tool: 5, isCenter: true, dia: num(g.tailD, 20) > 8 ? 5 : 4, zs: 3, zb: -6, rpm: 1000, feed: 0.08, peck: 0 });
+      add('tailOn', { note: 'USE CENTER' });
+    }
+    const mode = monotonicX(pts, false) ? 'G85' : 'G86';
+    if (mode === 'G86') notes.push('Biên dạng không đơn điệu theo X — PROCESS DECIDE chọn chu trình chép hình G86 (COPYING).');
+    const U = Math.round(num(M.lx, 0.2) * 2 * 1000) / 1000;
+    add('od', {
+      tool: g.roughT, ftool: g.finishT, mode, vc: M.vr, vcf: M.vf,
+      D: M.dx, F: M.fr, U, W: M.lz, ff: M.ff, comp: true,
+      startZ: Math.max(2, faceStock + 1), startX: '', useTail: !!g.useCenter, pts
+    });
+    if (g.blankId === 'thru' || g.blankId === 'blind') {
+      const bore = num(g.id, 0);
+      const depth = g.blankId === 'blind' ? Math.min(num(g.ol, 10), num(g.idDepth, num(g.ol, 10))) : Math.min(num(g.ol, 10), num(g.ol, 10) - 5);
+      if (bore > 0) {
+        if (g.useCenter) add('tailOff', { note: 'TRUOC KHOAN LO' });
+        add('drill', { tool: 6, isCenter: false, dia: bore, zs: 3, zb: -Math.abs(depth), rpm: Math.round(Math.min(1500, 1000 * M.vr / Math.max(bore, 8))), feed: Math.min(0.2, M.fr), peck: Math.max(3, bore) });
+        notes.push('Phôi có lỗ (BLANK ID): đã thêm khoan. Biên dạng lỗ tinh cần thêm nguyên công tiện trong (ID) nếu lỗ thành phẩm lớn hơn lỗ phôi.');
+      }
+    }
+    if (g.useCenter && !ops.some(o => o.type === 'tailOff')) add('tailOff', { note: 'KET THUC' });
+    return { ops, notes, preview: pts, faceStock, mode, mat: M };
+  }
+
+  const API = { OPS, DEFAULT_SETTINGS, newOp, compile, sampleProject, profilePoly, parseList, parsePts, asc, f,
+    MATERIALS, DEFAULT_IGF, igfTutorial, matOf, shapePreview, decideProcesses, resolveElems, toGenZ };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.OKU = API;
 })(this);
