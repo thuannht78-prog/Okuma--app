@@ -415,6 +415,42 @@
   let igfStep = 1, PATH = null, igfDidAuto = false;
   const sim = { play: false, mi: 0, u: 0, speed: 1, raf: 0, last: 0 };
   let simView = 'both', simSection = false, prevView = '2d', prevSection = false;
+  const VIEW_KEY = 'okuma_sim3d_colors';
+  const VIEW_PRESETS = {
+    thep: { name: 'Thép', stock: '#9eabb4', cut: '#7f8e9e', tool: '#e6c233', rapid: '#fa7a0d', feed: '#1f7af0', chuck: '#5c6b78', bg: '#e7eef4' },
+    nhom: { name: 'Nhôm', stock: '#d5d8dc', cut: '#b7c0c8', tool: '#f0d35a', rapid: '#ff6a00', feed: '#1565c0', chuck: '#8d98a3', bg: '#f7f9fa' },
+    dong: { name: 'Đồng', stock: '#c47a45', cut: '#a85a32', tool: '#f2e07a', rapid: '#ffb300', feed: '#0d47a1', chuck: '#6d4c41', bg: '#f6efe6' },
+    toi: { name: 'Tối', stock: '#8a939c', cut: '#6e787f', tool: '#ffd54f', rapid: '#ff8a50', feed: '#64b5f6', chuck: '#455a64', bg: '#1c2830' },
+    sang: { name: 'Sáng', stock: '#eceff1', cut: '#cfd8dc', tool: '#f9a825', rapid: '#ef6c00', feed: '#0277bd', chuck: '#90a4ae', bg: '#ffffff' }
+  };
+  const VIEW_DEFAULT = Object.assign({ invert: false, preset: 'thep' }, VIEW_PRESETS.thep);
+  function loadView() {
+    const v = Object.assign({}, VIEW_DEFAULT);
+    try {
+      const j = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
+      if (j && typeof j === 'object') Object.assign(v, j);
+    } catch (e) { /* giữ mặc định */ }
+    return v;
+  }
+  function paintColorInputs(v, src) {
+    v = v || loadView();
+    document.querySelectorAll('[data-c3]').forEach(el => { if (el !== src && v[el.dataset.c3]) el.value = v[el.dataset.c3]; });
+    document.querySelectorAll('[data-c3inv]').forEach(el => { if (el !== src) el.checked = !!v.invert; });
+    document.querySelectorAll('[data-c3preset]').forEach(el => el.classList.toggle('on', el.dataset.c3preset === v.preset));
+  }
+  function saveView(v, src) {
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify(v)); } catch (e) { /* bộ nhớ đầy */ }
+    if (window.OKU3D) window.OKU3D.setAppearance(v);
+    paintColorInputs(v, src);
+  }
+  function colorPanelHTML() {
+    const keys = [['stock', 'Màu phôi'], ['cut', 'Mặt đã cắt'], ['tool', 'Màu dao'], ['rapid', 'Chạy nhanh'], ['feed', 'Chạy dao'], ['chuck', 'Màu mâm / ụ'], ['bg', 'Nền']];
+    return `<details class="c3panel"><summary>Màu mô phỏng</summary>
+      <div class="simbar c3presets">${Object.keys(VIEW_PRESETS).map(k => `<button type="button" class="b2" data-c3preset="${k}">${VIEW_PRESETS[k].name}</button>`).join('')}<button type="button" class="b2" data-c3preset="reset">Mặc định</button></div>
+      <label class="chk"><input type="checkbox" data-c3inv> Đảo chiều xoay</label>
+      ${keys.map(([k, lab]) => `<label class="crow"><span>${lab}</span><input type="color" data-c3="${k}" value="${VIEW_DEFAULT[k]}"></label>`).join('')}
+    </details>`;
+  }
   const EL_VI = { face: 'Mặt đầu (FACE)', long: 'Dọc trục (LONG)', taper: 'Côn (TAPER)', cchf: 'Vát (C-CHF)', rchf: 'Bo tròn (R-CHF)', cw: 'Cung thuận (CW)', ccw: 'Cung ngược (CCW)', jump: 'Nhảy (JUMP)' };
   function igf() { if (!P.igf) P.igf = Object.assign({}, O.DEFAULT_IGF); return P.igf; }
   function numInp(k, v, label) {
@@ -582,6 +618,7 @@
     const S = Object.assign({}, O.DEFAULT_SETTINGS, P.settings);
     V.mount(cv);
     V.setSection(simSection);
+    V.setAppearance(loadView());
     V.update({
       moves: PATH.moves, ops: P.ops, blank: PATH.blank, chuck: PATH.chuck,
       mi: sim.mi, u: sim.u, playing: sim.play,
@@ -607,6 +644,7 @@
     const last = path.moves.length ? path.moves[path.moves.length - 1] : null;
     V.mount(cv);
     V.setSection(prevSection);
+    V.setAppearance(loadView());
     V.update({
       moves: path.moves, ops: P.ops, blank: path.blank, chuck: path.chuck,
       mi: path.moves.length, u: 0, playing: false,
@@ -697,7 +735,7 @@
             <div class="opb"><button type="button" data-a="up" aria-label="Lên">↑</button><button type="button" data-a="dn" aria-label="Xuống">↓</button><button type="button" data-a="ed">Sửa</button><button type="button" data-a="cp">Chép</button><button type="button" data-a="tg">${op.on === false ? 'Bật' : 'Tắt'}</button><button type="button" data-a="rm" aria-label="Xóa">🗑</button></div></li>`;
         }).join('') || '<li class="empty">Chưa có nguyên công. Thêm tay hoặc quyết định từ biên dạng.</li>'}</ol>`;
     } else if (igfStep === 4) {
-      body = `<p class="hint">Mô phỏng trước khi xuất mã. Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. 2D: phôi xám, biên dạng tinh xanh lá, chấu xám đậm, chống tâm tím, tam giác đỏ = dao. 3D: phôi quay và bóc dần theo cùng đường dao. Một ngón xoay, hai ngón phóng và kéo.</p>
+      body = `<p class="hint">Mô phỏng trước khi xuất mã. Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. 2D: phôi xám, biên dạng tinh xanh lá, chấu xám đậm, chống tâm tím, tam giác đỏ = dao. 3D: phôi tròn quay và bóc dần theo cùng đường dao. Một ngón xoay theo tay, hai ngón vừa phóng vừa kéo.</p>
         <div class="simbar">
           <button type="button" class="b1" id="simPlay">▶ Chạy</button>
           <button type="button" class="b2" id="simPause">⏸ Dừng</button>
@@ -714,12 +752,13 @@
         </div>
         <div class="cvwrap" id="sim2dWrap"${simView === '3d' ? ' hidden' : ''}><div class="cvt">Mặt cắt dọc 2D · vùng phôi (không vẽ điểm thay dao)</div><canvas id="cvSim" width="760" height="420"></canvas></div>
         <div class="cvwrap" id="sim3dWrap"${simView === '2d' ? ' hidden' : ''}>
-          <div class="cvt">Mô phỏng 3D · phôi quay, bóc dần · một ngón xoay, hai ngón phóng và kéo</div>
+          <div class="cvt">Mô phỏng 3D · phôi tròn, bóc dần · một ngón xoay theo tay, hai ngón phóng và kéo</div>
           <canvas id="cvSim3d" width="760" height="480"></canvas>
           <div class="simbar">
             <button type="button" class="b2${simSection ? ' on' : ''}" id="simSection">Mặt cắt</button>
             <button type="button" class="b2" id="simCam">Đặt lại góc nhìn</button>
           </div>
+          ${colorPanelHTML()}
           <p class="small muted">3D ước lượng tiện, rãnh, cắt đứt, khoan/tiện trong, ren và dao động lực. Không thay chạy thử không phôi trên máy.</p>
         </div>
         <div class="legend"><span class="lg h">Chạy nhanh</span><span class="lg p">Chạy dao</span><span class="lg f">Biên dạng tinh</span><span class="lg t">Chống tâm</span></div>
@@ -740,6 +779,7 @@
       <div class="btns"><button type="button" class="b2" id="igfDemo">Nạp ví dụ trong sách (TEST1)</button></div>
       <form id="igfForm" class="form" autocomplete="off">${body}</form>`;
     if (igfStep === 2) drawIgf();
+    paintColorInputs();
     if (igfStep === 4) { applySimView(); enterSim(true); }
     if (igfStep === 5 && R) renderCode();
     else paintGate();
@@ -850,6 +890,31 @@
   if (!P.ops.length && !localStorage.getItem(KEY)) P = O.sampleProject();
   renderSettings(); renderHelp(); refresh();
   const igfBox = $('#igfRoot'); if (igfBox) igfBox.addEventListener('click', igfRootClick);
+  const prevHost = $('#prevColorHost'); if (prevHost) prevHost.innerHTML = colorPanelHTML();
+  paintColorInputs();
+  if (window.OKU3D) window.OKU3D.setAppearance(loadView());
+  document.addEventListener('input', e => {
+    const t = e.target;
+    if (!t || !t.dataset) return;
+    if (t.dataset.c3) {
+      const v = loadView();
+      v[t.dataset.c3] = t.value;
+      v.preset = '';
+      saveView(v, t);
+    } else if (t.hasAttribute('data-c3inv')) {
+      const v = loadView();
+      v.invert = !!t.checked;
+      saveView(v, t);
+    }
+  });
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-c3preset]');
+    if (!b) return;
+    if (b.dataset.c3preset === 'reset') { saveView(Object.assign({}, VIEW_DEFAULT)); return; }
+    const p = VIEW_PRESETS[b.dataset.c3preset];
+    if (!p) return;
+    saveView(Object.assign({}, loadView(), p, { preset: b.dataset.c3preset }));
+  });
   const prev2 = $('#prev2d'), prev3 = $('#prev3d'), prevSec = $('#prevSection'), prevCam = $('#prevCam');
   if (prev2) prev2.onclick = () => { prevView = '2d'; applyPrevView(); drawPreview(); };
   if (prev3) prev3.onclick = () => { prevView = '3d'; applyPrevView(); drawPreview(); };

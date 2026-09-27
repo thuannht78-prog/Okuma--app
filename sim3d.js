@@ -5,21 +5,23 @@
 (function (root) {
   'use strict';
   const TAU = Math.PI * 2;
-  const NZ = 96, NR = 40, TH = 20, MAXV = 52000;
+  const NZ = 96, NR = 40, MAXV = 110000;
+  let segCount = 96;
   const COL = {
-    stock: [0.62, 0.68, 0.73],
-    cut: [0.55, 0.62, 0.68],
-    chuck: [0.38, 0.44, 0.50],
-    jaw: [0.28, 0.33, 0.38],
-    tail: [0.42, 0.28, 0.58],
-    insert: [0.93, 0.78, 0.22],
-    tip: [0.86, 0.16, 0.12],
+    stock: [0.62, 0.66, 0.71],
+    cut: [0.50, 0.56, 0.62],
+    chuck: [0.36, 0.42, 0.47],
+    jaw: [0.26, 0.30, 0.35],
+    tail: [0.36, 0.42, 0.47],
+    insert: [0.90, 0.76, 0.20],
+    tip: [0.90, 0.76, 0.20],
     holder: [0.22, 0.28, 0.33],
-    feed: [0.12, 0.48, 0.95],
+    feed: [0.12, 0.48, 0.94],
     rapid: [0.98, 0.48, 0.05],
     hole: [0.16, 0.18, 0.20],
     thread: [0.32, 0.36, 0.40],
-    slot: [0.20, 0.24, 0.22]
+    slot: [0.20, 0.24, 0.22],
+    bg: [0.905, 0.933, 0.957]
   };
   const num = (v, d) => (v === '' || v == null || isNaN(Number(v))) ? d : Number(v);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -126,38 +128,86 @@
   let canvas = null, gl = null, prog = null, buf = null, raf = 0, lastT = 0;
   let locs = null, failed = '', verts = 0, builtKey = '';
   let playing = false, cutting = false, liveLock = false, section = false, spin = 0.35;
+  let orbitInvert = false;
   const cam = { yaw: 0.82, pitch: 0.36, dist: 180, target: [0, 8, 0], user: false };
   let scene = null, cuts = null;
   const ptrs = new Map();
-  let pinch = null;
-  const onDown = e => { if (!canvas) return; try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* bỏ */ } ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); };
-  const onUp = e => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; };
-  const onMove = e => {
-    if (!ptrs.has(e.pointerId)) return;
-    ptrs.get(e.pointerId).x = e.clientX; ptrs.get(e.pointerId).y = e.clientY;
-    const pts = [...ptrs.values()];
+  let gesture = null;
+  function blockScroll(e) { if (e.cancelable) e.preventDefault(); }
+  function drive(pts, pan) {
+    if (!pts.length) return;
     if (pts.length >= 2) {
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
       const mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
-      if (pinch) {
-        cam.dist = clamp(cam.dist * (pinch.d / dist), 28, 980);
-        panPixels(mx - pinch.x, my - pinch.y);
+      if (!gesture || gesture.mode !== 'pinch') gesture = { mode: 'pinch', d: dist, x: mx, y: my };
+      else {
+        const scale = gesture.d / dist;
+        if (scale > 0.25 && scale < 4) cam.dist = clamp(cam.dist * scale, 28, 980);
+        const pdx = mx - gesture.x, pdy = my - gesture.y;
+        if (Math.abs(pdx) + Math.abs(pdy) < 180) panPixels(pdx, pdy);
+        gesture.d = dist; gesture.x = mx; gesture.y = my;
       }
-      pinch = { d: dist, x: mx, y: my };
       cam.user = true;
       return;
     }
-    pinch = null;
-    const p = ptrs.get(e.pointerId);
-    const dx = e.clientX - (p.lx == null ? e.clientX : p.lx);
-    const dy = e.clientY - (p.ly == null ? e.clientY : p.ly);
-    p.lx = e.clientX; p.ly = e.clientY;
-    if (!dx && !dy) return;
-    if (e.shiftKey || (e.buttons & 2)) panPixels(dx, dy);
-    else { cam.yaw += dx * 0.012; cam.pitch = clamp(cam.pitch - dy * 0.012, -1.15, 1.2); }
+    const p = pts[0];
+    if (!gesture || gesture.mode !== 'one') gesture = { mode: 'one', x: p.x, y: p.y };
+    else {
+      const dx = p.x - gesture.x, dy = p.y - gesture.y;
+      gesture.x = p.x; gesture.y = p.y;
+      if (!dx && !dy) return;
+      if (Math.abs(dx) + Math.abs(dy) > 180) return;
+      if (pan) panPixels(dx, dy);
+      else {
+        const s = orbitInvert ? 1 : -1;
+        cam.yaw += dx * 0.01 * s;
+        cam.pitch = clamp(cam.pitch - dy * 0.01 * s, -1.2, 1.2);
+      }
+    }
+    cam.user = true;
+  }
+  const onDown = e => {
+    if (!canvas || e.pointerType === 'touch') return;
+    if (e.pointerType === 'mouse' && e.button > 2) return;
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* bỏ */ }
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, pan: e.button === 1 || e.button === 2 });
+    if (ptrs.size >= 2) {
+      const pts = [...ptrs.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+      gesture = { mode: 'pinch', d: dist, x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    } else gesture = { mode: 'one', x: e.clientX, y: e.clientY };
+    blockScroll(e);
+  };
+  const onUp = e => { if (e.pointerType === 'touch') return; ptrs.delete(e.pointerId); gesture = null; };
+  const onMove = e => {
+    if (e.pointerType === 'touch') return;
+    const rec = ptrs.get(e.pointerId);
+    if (!rec) return;
+    rec.x = e.clientX;
+    rec.y = e.clientY;
+    blockScroll(e);
+    const pan = !!(e.shiftKey || (e.buttons & 2) || (e.buttons & 4) || rec.pan);
+    drive([...ptrs.values()], pan);
+  };
+  const onTouchStart = e => {
+    blockScroll(e);
+    const pts = [...e.touches].map(t => ({ x: t.clientX, y: t.clientY }));
+    if (pts.length >= 2) {
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+      gesture = { mode: 'pinch', d: dist, x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    } else if (pts.length === 1) gesture = { mode: 'one', x: pts[0].x, y: pts[0].y };
+  };
+  const onTouchMove = e => {
+    blockScroll(e);
+    drive([...e.touches].map(t => ({ x: t.clientX, y: t.clientY })), false);
+  };
+  const onTouchEnd = e => { gesture = null; blockScroll(e); };
+  const onWheel = e => {
+    blockScroll(e);
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 80 : e.deltaY;
+    cam.dist = clamp(cam.dist * Math.exp(dy * 0.0011), 28, 980);
     cam.user = true;
   };
-  const onWheel = e => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), 28, 980); cam.user = true; };
   const onMenu = e => e.preventDefault();
 
   function panPixels(dx, dy) {
@@ -230,12 +280,20 @@
     if (!initGL()) { showFail(); canvas = null; return; }
     const old = cv.parentNode && cv.parentNode.querySelector('.sim3dfail');
     if (old) old.remove();
-    cv.addEventListener('pointerdown', onDown);
+    cv.addEventListener('pointerdown', onDown, { passive: false });
     cv.addEventListener('pointerup', onUp);
     cv.addEventListener('pointercancel', onUp);
-    cv.addEventListener('pointermove', onMove);
+    cv.addEventListener('pointermove', onMove, { passive: false });
     cv.addEventListener('wheel', onWheel, { passive: false });
     cv.addEventListener('contextmenu', onMenu);
+    cv.addEventListener('touchstart', onTouchStart, { passive: false });
+    cv.addEventListener('touchmove', onTouchMove, { passive: false });
+    cv.addEventListener('touchend', onTouchEnd, { passive: false });
+    cv.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    if (root.ResizeObserver) {
+      cv._okRo = new root.ResizeObserver(() => resize());
+      cv._okRo.observe(cv);
+    }
     builtKey = '';
     cam.user = false;
     if (!raf) raf = requestAnimationFrame(frame);
@@ -243,7 +301,7 @@
   function unmount() {
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
-    ptrs.clear(); pinch = null;
+    ptrs.clear(); gesture = null;
     if (canvas) {
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointerup', onUp);
@@ -251,6 +309,11 @@
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('contextmenu', onMenu);
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+      canvas.removeEventListener('touchcancel', onTouchEnd);
+      if (canvas._okRo) { canvas._okRo.disconnect(); canvas._okRo = null; }
     }
     if (gl) { if (buf) gl.deleteBuffer(buf); if (prog) gl.deleteProgram(prog); const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); }
     canvas = null; gl = null; prog = null; buf = null; locs = null; scene = null; builtKey = '';
@@ -450,48 +513,105 @@
       tri(x0, y0, z0, x1, y1, z1, x2, y2, z2);
       tri(x0, y0, z0, x2, y2, z2, x3, y3, z3);
     }
-    const th0 = section ? Math.PI : 0, th1 = TAU, thN = section ? 12 : TH;
+    function cellOn(iz, ir) { return iz >= 0 && ir >= 0 && iz < NZ && ir < NR && grid[iz * NR + ir]; }
+    function groupAt(z) { return sever != null && z > sever + 0.4 ? 'drop' : 'spin'; }
+    function gOf(iz) { return groupAt(zLo + (iz + 0.5) * dz); }
+    function exposed(iz, ir, face) {
+      if (!cellOn(iz, ir)) return false;
+      if (face === 'o') return !cellOn(iz, ir + 1);
+      if (face === 'i') return ir > 0 && ir * dr > 0.15 && !cellOn(iz, ir - 1);
+      if (face === 'f') return !cellOn(iz + 1, ir);
+      if (face === 'b') return !cellOn(iz - 1, ir);
+      return false;
+    }
+    const spans = [];
+    for (let ir = 0; ir < NR; ir++) {
+      const rO = (ir + 1) * dr;
+      let iz = 0;
+      while (iz < NZ) {
+        if (!exposed(iz, ir, 'o')) { iz++; continue; }
+        const g = gOf(iz);
+        const z0 = zLo + iz * dz;
+        iz++;
+        while (iz < NZ && exposed(iz, ir, 'o') && gOf(iz) === g) iz++;
+        spans.push({ k: 'w', z0, r0: rO, z1: zLo + iz * dz, r1: rO, g, color: rO >= stockR - dr * 0.65 ? COL.stock : COL.cut, out: 1 });
+      }
+      if (ir === 0) continue;
+      const rI = ir * dr;
+      iz = 0;
+      while (iz < NZ) {
+        if (!exposed(iz, ir, 'i')) { iz++; continue; }
+        const g = gOf(iz);
+        const z0 = zLo + iz * dz;
+        iz++;
+        while (iz < NZ && exposed(iz, ir, 'i') && gOf(iz) === g) iz++;
+        spans.push({ k: 'w', z0, r0: rI, z1: zLo + iz * dz, r1: rI, g, color: COL.cut, out: -1 });
+      }
+    }
+    for (let iz = 0; iz < NZ; iz++) {
+      const g = gOf(iz);
+      [['f', 1], ['b', -1]].forEach(([face, sign]) => {
+        const z = face === 'f' ? zLo + (iz + 1) * dz : zLo + iz * dz;
+        const color = (z <= zLo + dz * 0.55 || z >= zHi - dz * 0.55) ? COL.stock : COL.cut;
+        let ir = 0;
+        while (ir < NR) {
+          if (!exposed(iz, ir, face)) { ir++; continue; }
+          const r0 = ir * dr;
+          ir++;
+          while (ir < NR && exposed(iz, ir, face)) ir++;
+          spans.push({ k: 'r', z, r0, r1: ir * dr, sign, g, color });
+        }
+      });
+    }
+    let TH = 128;
+    while (TH > 96 && spans.length * TH * 6 > 90000) TH -= 8;
+    while (TH > 48 && spans.length * TH * 6 > 100000) TH -= 16;
+    segCount = TH;
+    const th0 = section ? Math.PI : 0, thSpan = section ? Math.PI : TAU;
+    const thN = section ? Math.max(48, TH >> 1) : TH;
     const cosT = new Float32Array(thN + 1), sinT = new Float32Array(thN + 1);
-    for (let k = 0; k <= thN; k++) { const a = th0 + (th1 - th0) * k / thN; cosT[k] = Math.cos(a); sinT[k] = Math.sin(a); }
-    function wall(zA, rA, zB, rB) {
+    for (let k = 0; k <= thN; k++) {
+      const a = th0 + thSpan * k / thN;
+      cosT[k] = Math.cos(a); sinT[k] = Math.sin(a);
+    }
+    function wall(zA, rA, zB, rB, outward) {
+      const dzs = zB - zA, drs = rB - rA;
+      let nz = -drs, nr = dzs;
+      if ((outward || 1) < 0) { nz = -nz; nr = -nr; }
+      const nl = Math.hypot(nz, nr) || 1; nz /= nl; nr /= nl;
       for (let k = 0; k < thN; k++) {
-        quad(zA, rA * cosT[k], rA * sinT[k], zB, rB * cosT[k], rB * sinT[k], zB, rB * cosT[k + 1], rB * sinT[k + 1], zA, rA * cosT[k + 1], rA * sinT[k + 1]);
+        const c0 = cosT[k], s0 = sinT[k], c1 = cosT[k + 1], s1 = sinT[k + 1];
+        vert(zA, rA * c0, rA * s0, nz, nr * c0, nr * s0);
+        vert(zB, rB * c0, rB * s0, nz, nr * c0, nr * s0);
+        vert(zB, rB * c1, rB * s1, nz, nr * c1, nr * s1);
+        vert(zA, rA * c0, rA * s0, nz, nr * c0, nr * s0);
+        vert(zB, rB * c1, rB * s1, nz, nr * c1, nr * s1);
+        vert(zA, rA * c1, rA * s1, nz, nr * c1, nr * s1);
       }
     }
     function ring(z, r0, r1, sign) {
+      const nx = sign > 0 ? 1 : -1;
       for (let k = 0; k < thN; k++) {
-        if (sign > 0) quad(z, r0 * cosT[k], r0 * sinT[k], z, r0 * cosT[k + 1], r0 * sinT[k + 1], z, r1 * cosT[k + 1], r1 * sinT[k + 1], z, r1 * cosT[k], r1 * sinT[k]);
-        else quad(z, r0 * cosT[k], r0 * sinT[k], z, r1 * cosT[k], r1 * sinT[k], z, r1 * cosT[k + 1], r1 * sinT[k + 1], z, r0 * cosT[k + 1], r0 * sinT[k + 1]);
+        const c0 = cosT[k], s0 = sinT[k], c1 = cosT[k + 1], s1 = sinT[k + 1];
+        if (sign > 0) {
+          vert(z, r0 * c0, r0 * s0, nx, 0, 0); vert(z, r0 * c1, r0 * s1, nx, 0, 0); vert(z, r1 * c1, r1 * s1, nx, 0, 0);
+          vert(z, r0 * c0, r0 * s0, nx, 0, 0); vert(z, r1 * c1, r1 * s1, nx, 0, 0); vert(z, r1 * c0, r1 * s0, nx, 0, 0);
+        } else {
+          vert(z, r0 * c0, r0 * s0, nx, 0, 0); vert(z, r1 * c0, r1 * s0, nx, 0, 0); vert(z, r1 * c1, r1 * s1, nx, 0, 0);
+          vert(z, r0 * c0, r0 * s0, nx, 0, 0); vert(z, r1 * c1, r1 * s1, nx, 0, 0); vert(z, r0 * c1, r0 * s1, nx, 0, 0);
+        }
       }
     }
-    function cellOn(iz, ir) { return iz >= 0 && ir >= 0 && iz < NZ && ir < NR && grid[iz * NR + ir]; }
-    function groupAt(z) { return sever != null && z > sever + 0.4 ? 'drop' : 'spin'; }
-
-    start(COL.stock, 'spin', 1, 0);
-    const split = sever != null;
-    if (!split) {
-      for (let iz = 0; iz < NZ; iz++) emitSlice(iz, 'spin');
-    } else {
-      stop(); start(COL.stock, 'spin', 1, 0);
-      for (let iz = 0; iz < NZ; iz++) if (zLo + (iz + 0.5) * dz <= sever + 0.4) emitSlice(iz, 'spin');
-      stop(); start(COL.stock, 'drop', 1, 0);
-      for (let iz = 0; iz < NZ; iz++) if (zLo + (iz + 0.5) * dz > sever + 0.4) emitSlice(iz, 'drop');
-    }
+    spans.sort((a, b) => (a.g < b.g ? -1 : a.g > b.g ? 1 : (a.color === b.color ? 0 : (a.color === COL.stock ? -1 : 1))));
+    let spanKey = '';
+    spans.forEach(s => {
+      const key = s.g + (s.color === COL.stock ? 'S' : 'C');
+      if (key !== spanKey) { stop(); start(s.color, s.g, 1, 0); spanKey = key; }
+      if (s.k === 'w') wall(s.z0, s.r0, s.z1, s.r1, s.out);
+      else ring(s.z, s.r0, s.r1, s.sign);
+    });
     stop();
-    function emitSlice(iz) {
-      const zA = zLo + iz * dz, zB = zA + dz;
-      for (let ir = 0; ir < NR; ir++) {
-        if (!cellOn(iz, ir)) continue;
-        const rA = ir * dr, rB = rA + dr;
-        const eO = !cellOn(iz, ir + 1), eI = ir > 0 && !cellOn(iz, ir - 1) && rA > 0.2;
-        const eF = !cellOn(iz + 1, ir), eB = !cellOn(iz - 1, ir);
-        if (!eO && !eI && !eF && !eB) continue;
-        if (eO) wall(zA, rB, zB, rB);
-        if (eI) wall(zA, rA, zB, rA);
-        if (eF) ring(zB, rA, rB, 1);
-        if (eB) ring(zA, rA, rB, -1);
-      }
-    }
+    const split = sever != null;
 
     if (section) {
       start(COL.cut, 'spin', 0, 0);
@@ -548,14 +668,8 @@
     if (model.tailOn) {
       const td = Math.max(4, num(model.tailDia, 16)) / 2;
       start(COL.tail, 'fixed', 0, 0);
-      const n = section ? 8 : 12;
-      for (let k = 0; k < n; k++) {
-        const a0 = (section ? Math.PI : 0) + (section ? Math.PI : TAU) * k / n;
-        const a1 = (section ? Math.PI : 0) + (section ? Math.PI : TAU) * (k + 1) / n;
-        const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
-        quad(0.6, 0.4 * c0, 0.4 * s0, 12, td * c0, td * s0, 12, td * c1, td * s1, 0.6, 0.4 * c1, 0.4 * s1);
-        quad(12, td * 0.72 * c0, td * 0.72 * s0, 34, td * 0.72 * c0, td * 0.72 * s0, 34, td * 0.72 * c1, td * 0.72 * s1, 12, td * 0.72 * c1, td * 0.72 * s1);
-      }
+      wall(0.6, 0.4, 12, td, 1);
+      wall(12, td * 0.72, 34, td * 0.72, 1);
       stop();
     }
 
@@ -582,7 +696,7 @@
       if (Math.abs(ax) < 0.85) { px = 0; py = az; pz = -ay; } else { px = -az; py = 0; pz = ax; }
       let pl = Math.hypot(px, py, pz) || 1; px /= pl; py /= pl; pz /= pl;
       const qx = ay * pz - az * py, qy = az * px - ax * pz, qz = ax * py - ay * px;
-      const seg = 8;
+      const seg = 12;
       for (let k = 0; k < seg; k++) {
         const a0 = TAU * k / seg, a1 = TAU * (k + 1) / seg;
         const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
@@ -763,6 +877,7 @@
       cuts: { nF: Math.min(2, flats.length), nH: Math.min(4, axH.length), nR: Math.min(4, rdH.length), uF, uH, uHm, uR, uRs },
       center: [(zLo + zHi) / 2, stockR * 0.15, 0],
       fit: Math.max(70, (zHi - zLo) * 0.72 + jawR * 1.15),
+      stockR,
       sever
     };
   }
@@ -778,8 +893,10 @@
 
   function resize() {
     if (!canvas || !gl) return;
-    const dpr = Math.min(1.5, root.devicePixelRatio || 1);
-    const w = canvas.clientWidth || 360, h = canvas.clientHeight || 280;
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width || canvas.clientWidth || 360;
+    const h = rect.height || canvas.clientHeight || 280;
+    const dpr = Math.min(2, root.devicePixelRatio || 1);
     const W = Math.max(2, Math.round(w * dpr)), H = Math.max(2, Math.round(h * dpr));
     if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -788,7 +905,8 @@
   function render() {
     if (!gl || !prog) return;
     resize();
-    const aspect = canvas.width / Math.max(1, canvas.height);
+    const rect = canvas.getBoundingClientRect();
+    const aspect = (rect.width || canvas.width) / Math.max(1, rect.height || canvas.height);
     const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch), cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
     const eye = [cam.target[0] + cam.dist * cp * sy, cam.target[1] + cam.dist * sp, cam.target[2] + cam.dist * cp * cy];
     const vp = mul(persp(0.7, aspect, 2, 4000), look(eye, cam.target, [0, 1, 0]));
@@ -798,7 +916,7 @@
     const spinM = rotX(ang);
     const dropM = trans(0, -16, 0);
     const id = ident();
-    gl.clearColor(0.905, 0.935, 0.955, 1);
+    gl.clearColor(COL.bg[0], COL.bg[1], COL.bg[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     if (!scene) return;
     const c = scene.cuts;
@@ -860,6 +978,88 @@
     cam.user = false; cam.yaw = 0.82; cam.pitch = 0.36; spin = 0.35;
     if (scene) { cam.target = scene.center.slice(); cam.dist = scene.fit; }
   }
+  function lookEnd() {
+    cam.user = true;
+    cam.yaw = Math.PI / 2;
+    cam.pitch = 0;
+    spin = 0;
+    if (scene) {
+      cam.target = [scene.center[0], 0, 0];
+      cam.dist = Math.max(80, (scene.stockR || 30) * 5.6);
+    }
+  }
+  function hexRgb(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  }
+  function putCol(key, hex) {
+    const c = hexRgb(hex);
+    if (!c || !COL[key]) return;
+    COL[key][0] = c[0]; COL[key][1] = c[1]; COL[key][2] = c[2];
+  }
+  function setAppearance(v) {
+    if (!v) return;
+    putCol('stock', v.stock); putCol('cut', v.cut); putCol('insert', v.tool); putCol('tip', v.tool);
+    putCol('rapid', v.rapid); putCol('feed', v.feed); putCol('chuck', v.chuck); putCol('bg', v.bg);
+    COL.jaw[0] = COL.chuck[0] * 0.72; COL.jaw[1] = COL.chuck[1] * 0.72; COL.jaw[2] = COL.chuck[2] * 0.75;
+    COL.tail[0] = COL.chuck[0]; COL.tail[1] = COL.chuck[1]; COL.tail[2] = COL.chuck[2];
+    if (v.invert != null) orbitInvert = !!v.invert;
+    if (canvas && v.bg) canvas.style.background = v.bg;
+  }
+  function diskMeasure() {
+    if (!gl || !canvas) return null;
+    const keep = spin;
+    spin = 0;
+    render();
+    spin = keep;
+    const w = canvas.width, h = canvas.height;
+    const pix = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pix);
+    const bg = [pix[0], pix[1], pix[2]];
+    const cx = (w / 2) | 0, cy = (h / 2) | 0;
+    const N = 72, radii = [];
+    for (let i = 0; i < N; i++) {
+      const a = TAU * i / N, dx = Math.cos(a), dy = Math.sin(a);
+      let r = 0;
+      const lim = Math.min(w, h) * 0.49;
+      for (let s = 3; s < lim; s++) {
+        const x = (cx + dx * s) | 0, y = (cy + dy * s) | 0;
+        if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) { r = s; break; }
+        const o = (y * w + x) * 4;
+        if (Math.abs(pix[o] - bg[0]) < 22 && Math.abs(pix[o + 1] - bg[1]) < 22 && Math.abs(pix[o + 2] - bg[2]) < 22) { r = s; break; }
+      }
+      radii.push(r);
+    }
+    const sorted = radii.slice().sort((a, b) => a - b);
+    const median = sorted[(N / 2) | 0] || 1;
+    const inliers = [];
+    let hx = 0, hn = 0, vy = 0, vn2 = 0;
+    for (let i = 0; i < N; i++) {
+      if (Math.abs(radii[i] - median) / median >= 0.05) continue;
+      inliers.push(radii[i]);
+      const a = TAU * i / N;
+      if (Math.abs(Math.cos(a)) > 0.75) { hx += radii[i]; hn++; }
+      if (Math.abs(Math.sin(a)) > 0.75) { vy += radii[i]; vn2++; }
+    }
+    let mean = 0;
+    inliers.forEach(r => { mean += r; });
+    mean = inliers.length ? mean / inliers.length : median;
+    let acc = 0;
+    inliers.forEach(r => { const d = r - mean; acc += d * d; });
+    const rect = canvas.getBoundingClientRect();
+    return {
+      segs: segCount,
+      median,
+      inlierFrac: inliers.length / N,
+      ripple: mean ? Math.sqrt(acc / Math.max(1, inliers.length)) / mean : 1,
+      hv: hn && vn2 ? (hx / hn) / (vy / vn2) : 1,
+      cssAspect: rect.width / Math.max(1, rect.height),
+      bufAspect: w / Math.max(1, h),
+      verts
+    };
+  }
   function setSection(on) {
     const n = !!on;
     if (n === section) return;
@@ -879,11 +1079,12 @@
   }
 
   root.OKU3D = {
-    mount, unmount, update, resetCam, setSection, probe,
+    mount, unmount, update, resetCam, setSection, probe, lookEnd, setAppearance, diskMeasure,
     current: () => canvas,
     ok: () => !!(gl && !failed),
     fail: () => failed,
     verts: () => verts,
+    segments: () => segCount,
     cam
   };
 })(window);
