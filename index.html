@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f3d5e">
+<meta name="description" content="Lập trình CNC cho máy tiện Okuma LB3000EX II – OSP-P300L (LAP G85/G87, ren G71, rãnh, cắt đứt, khoan/phay dao động lực trục C/Y, chống tâm)">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>Okuma LB3000EX II – Lập trình CNC</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="ttl"><b>Okuma LB3000EX II</b><small>OSP-P300L · Lập trình tiện CNC</small></div>
+  <span id="netState" class="pill">●</span>
+</header>
+<div id="warnTop" class="danger">
+  ⚠ <b>BẮT BUỘC:</b> chương trình phải được kiểm tra bằng <b>chạy thử không phôi (dry run)</b>, override thấp, từng block (single block) hoặc <b>mô phỏng trên máy</b> trước khi cắt. Ứng dụng chỉ hỗ trợ soạn thảo – người vận hành chịu trách nhiệm kiểm tra.
+  <button id="warnHide" aria-label="Thu gọn">▴</button>
+</div>
+
+<main>
+  <section id="v-ops" class="view on">
+    <div class="rowh"><h2>Danh sách nguyên công</h2><span id="opCount" class="muted"></span></div>
+    <div id="opsEmpty" class="empty">Chưa có nguyên công. Bấm <b>＋</b> để thêm, hoặc vào <b>Thiết lập → Nạp ví dụ mẫu</b>.</div>
+    <ol id="opsList" class="ops"></ol>
+    <div id="sumWarn" class="sumwarn"></div>
+    <button id="fab" class="fab" aria-label="Thêm nguyên công">＋</button>
+  </section>
+
+  <section id="v-set" class="view">
+    <h2>Thiết lập chương trình &amp; máy</h2>
+    <form id="setForm" class="form" autocomplete="off"></form>
+    <h3>Dự án</h3>
+    <div class="btns">
+      <button id="btnSample" class="b2">Nạp ví dụ mẫu (đủ mọi nguyên công)</button>
+      <button id="btnExport" class="b2">Xuất dự án (.json)</button>
+      <label class="b2 file">Nhập dự án<input id="fileImport" type="file" accept=".json,application/json"></label>
+      <button id="btnClear" class="b2 red">Xóa hết nguyên công</button>
+    </div>
+    <p class="muted small">Dữ liệu lưu tự động trong trình duyệt của máy này (không có máy chủ). Ứng dụng chạy offline sau lần mở đầu tiên.</p>
+  </section>
+
+  <section id="v-code" class="view">
+    <div class="rowh"><h2>Chương trình NC</h2><span id="codeStat" class="muted"></span></div>
+    <div class="danger slim">⚠ Kiểm tra bằng chạy thử / mô phỏng trước khi cắt. Mã có đánh dấu “CHƯA XÁC MINH” trong mục Tra cứu.</div>
+    <div class="fname"><label>Tên tệp <input id="fname" value="LB3000A"></label><span>.MIN</span></div>
+    <div class="btns sticky">
+      <button id="btnCopy" class="b1">📋 Sao chép</button>
+      <button id="btnDl" class="b1">⬇ Tải .MIN</button>
+      <button id="btnShare" class="b1">↗ Chia sẻ</button>
+    </div>
+    <div id="codeWarn"></div>
+    <pre id="code" class="code"></pre>
+  </section>
+
+  <section id="v-prev" class="view">
+    <div class="rowh"><h2>Xem trước 2D</h2><select id="prevSel"></select></div>
+    <div class="cvwrap"><div class="cvt">Mặt cắt dọc (X–Z) · nửa trên chi tiết, nửa dưới đối xứng</div><canvas id="cvSide" width="760" height="420"></canvas></div>
+    <div class="cvwrap"><div class="cvt">Nhìn từ mặt đầu (X–Y / C) · lỗ, rãnh, hốc, mặt phẳng</div><canvas id="cvFace" width="760" height="560"></canvas></div>
+    <p class="muted small">Hình minh họa hình học từ dữ liệu nhập (không phải mô phỏng đường chạy dao thực của bộ điều khiển). Quy ước hình mặt đầu: C0 hướng sang phải, C dương ngược chiều kim đồng hồ – chiều thực tế phải kiểm tra trên máy.</p>
+    <div class="legend"><span class="lg p">Biên dạng tinh</span><span class="lg r">Lát cắt thô</span><span class="lg c">Cắt đứt</span><span class="lg h">Nguyên công đang chọn</span><span class="lg t">Chống tâm</span></div>
+  </section>
+
+  <section id="v-help" class="view">
+    <h2>Tra cứu mã OSP-P300L</h2>
+    <div id="helpBody"></div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button data-v="v-ops" class="on"><i>☰</i>Nguyên công</button>
+  <button data-v="v-set"><i>⚙</i>Thiết lập</button>
+  <button data-v="v-code"><i>⌨</i>Mã NC</button>
+  <button data-v="v-prev"><i>◩</i>Xem trước</button>
+  <button data-v="v-help"><i>?</i>Tra cứu</button>
+</nav>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheetin">
+    <div class="sheeth"><b id="sheetTitle">Thêm nguyên công</b><button id="sheetClose" aria-label="Đóng">✕</button></div>
+    <div id="sheetBody"></div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<script src="./gen.js"></script>
+<script src="./ui.js"></script>
+</body>
+</html>
