@@ -163,20 +163,27 @@ async function main() {
       width: 390, height: 844, deviceScaleFactor: 2, mobile: true
     });
     await cdp.send('Page.navigate', { url: fileUrl });
-    await waitFor(cdp, 'document.readyState === "complete" && !!document.querySelector("#btnOfflineHtml")');
+    await waitFor(cdp, 'document.readyState === "complete" && !!document.querySelector("#btnSupport")');
     await sleep(200);
+    await ev(cdp, `document.querySelector('#btnSupport').click()`);
+    await waitFor(cdp, `document.querySelector('#support').hidden === false && !!document.querySelector('#offlineNote')`);
 
     const offline = await ev(cdp, 'navigator.onLine');
     const proto = await ev(cdp, 'location.protocol');
     const btn = await ev(cdp, `(() => {
       const a = document.querySelector('#btnOfflineHtml');
       const z = document.querySelector('#btnOfflineZip');
-      return { text: a.textContent, href: a.href, zip: z.href, sw: 'serviceWorker' in navigator };
+      const note = document.querySelector('#offlineNote');
+      const box = document.querySelector('#offlineBtns');
+      return { text: a.textContent, href: a.href, zip: z.href, note: note.textContent, hidden: !!box.hidden, sw: 'serviceWorker' in navigator };
     })()`);
+    if (!btn.note.includes('bản một tệp')) throw new Error('Thiếu ghi chú bản offline: ' + btn.note);
+    if (!btn.hidden) throw new Error('Nút tải vẫn hiện trên bản một tệp');
     if (btn.text !== 'Tải bản chạy offline') throw new Error('Sai nhãn nút: ' + btn.text);
     if (!btn.href.endsWith('/download/okuma-app-offline.html')) throw new Error('Sai link HTML: ' + btn.href);
     if (!btn.zip.endsWith('/download/okuma-app-offline.zip')) throw new Error('Sai link zip: ' + btn.zip);
     const shotBtn = await shot(cdp, 'offline-download-button.png');
+    await ev(cdp, `document.querySelector('#supportClose').click()`);
 
     await ev(cdp, `document.querySelector('#setupTest1').click()`);
     await waitFor(cdp, `!!document.querySelector('#igfCv')`);

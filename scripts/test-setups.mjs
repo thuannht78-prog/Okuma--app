@@ -158,6 +158,10 @@ async function runPage(cdp, errors, tag) {
   })()`);
   if (!sim.t.includes('đã chạy hết')) errors.push(tag + ' mô phỏng không xong: ' + sim.t);
   shots.s6 = await snapStep(cdp, 6, 'step-6-xuat-code.png');
+  await waitFor(cdp, `!!document.querySelector('#safeExport') && document.querySelector('#safeExport').textContent.includes('dry run')`);
+  await ev(cdp, `document.querySelector('#safeExport').scrollIntoView({ block: 'center' })`);
+  await sleep(150);
+  shots.remind = await shot(cdp, 'step-6-safety-reminder.png');
   await waitFor(cdp, `!!document.querySelector('#igfDl') && (document.querySelector('.simgate')||{}).textContent.includes('Đã mô phỏng')`);
   await ev(cdp, `(() => {
     window.__dl = '';
@@ -177,9 +181,45 @@ async function runPage(cdp, errors, tag) {
   await waitFor(cdp, `document.querySelector('#headTitle').textContent === 'Truc A' && !!document.querySelector('#setForm')`);
   await ev(cdp, `document.querySelector('#flowToSetup').click()`);
   await waitFor(cdp, `document.querySelectorAll('#setupList li').length >= 3`);
-  await ev(cdp, `document.querySelector('#v-setup h2').scrollIntoView({ block: 'start' })`);
+  await ev(cdp, `window.scrollTo(0, 0)`);
   await sleep(150);
-  shots.manager = await shot(cdp, 'setup-manager.png');
+  const clean = await ev(cdp, `(() => {
+    const head = document.querySelector('header.bar').getBoundingClientRect();
+    const title = document.querySelector('#v-setup h2').getBoundingClientRect();
+    const warn = document.querySelector('#warnTop');
+    const off = document.querySelector('#offlineGet');
+    return {
+      titleTop: title.top, headBottom: head.bottom,
+      warnVisible: warn.getClientRects().length > 0,
+      offVisible: off.getClientRects().length > 0,
+      inPopup: !!document.querySelector('#support #warnTop') && !!document.querySelector('#support #offlineGet')
+    };
+  })()`);
+  if (clean.warnVisible || clean.offVisible) errors.push(tag + ' cảnh báo hoặc thẻ offline còn trên màn hình chính');
+  if (!clean.inPopup) errors.push(tag + ' thiếu nội dung trong Hỗ trợ');
+  if (!(clean.titleTop >= clean.headBottom - 2 && clean.titleTop < clean.headBottom + 36)) errors.push(tag + ' danh sách setup không sát đầu trang: ' + JSON.stringify(clean));
+  shots.clean = await shot(cdp, 'setup-start-clean.png');
+  shots.manager = shots.clean;
+  await ev(cdp, `document.querySelector('#btnSupport').click()`);
+  await waitFor(cdp, `document.querySelector('#support').hidden === false && document.querySelector('#warnTop').getClientRects().length > 0`);
+  await sleep(200);
+  shots.helpTop = await shot(cdp, 'help-popup-top.png');
+  const help = await ev(cdp, `(() => {
+    const t = document.querySelector('#support').innerText;
+    const a = document.querySelector('#btnOfflineHtml');
+    const note = document.querySelector('#offlineNote');
+    return { hasWarn: t.includes('BẮT BUỘC'), hasDl: !!(a && a.offsetParent), href: a ? a.href : '', hasGuide: t.includes('TURNING SHAPE'), note: note ? note.textContent : '' };
+  })()`);
+  if (!help.hasWarn || !help.hasGuide) errors.push(tag + ' popup Hỗ trợ thiếu nội dung: ' + JSON.stringify(help));
+  if (help.note) {
+    if (!help.note.includes('bản một tệp') || help.hasDl) errors.push(tag + ' bản offline vẫn hiện nút tải: ' + JSON.stringify(help));
+  } else if (!help.hasDl || !help.href.endsWith('/download/okuma-app-offline.html')) errors.push(tag + ' sai nút tải offline: ' + JSON.stringify(help));
+  await ev(cdp, `document.querySelector('#supportIn').scrollTop = document.querySelector('#supportIn').scrollHeight`);
+  await sleep(200);
+  shots.helpScroll = await shot(cdp, 'help-popup-scrolled.png');
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 200, y: 40, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 200, y: 40, button: 'left', clickCount: 1 });
+  await waitFor(cdp, `document.querySelector('#support').hidden === true`);
 
   await ev(cdp, `(() => {
     const li = [...document.querySelectorAll('#setupList li')].find(n => n.textContent.includes('TEST1') && !n.textContent.includes('bản sao'));

@@ -2,14 +2,20 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
 html{scroll-padding-top:64px;scroll-padding-bottom:72px}
-.bar{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top))}
-.ttl b{display:block;font-size:17px;max-width:68vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ttl small{opacity:.8;display:block;max-width:68vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top))}
+.ttl{min-width:0;flex:1}
+.ttl b{display:block;font-size:17px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ttl small{opacity:.8;display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.baracts{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.helpbtn{width:34px;height:34px;border:0;border-radius:17px;background:#ffffff22;color:#fff;font-size:18px;font-weight:700;line-height:34px;padding:0}
 .pill{font-size:12px;padding:3px 8px;border-radius:10px;background:#ffffff22}
 .danger{background:#fff3e0;border-left:5px solid var(--red);color:#5a1a00;padding:8px 36px 8px 10px;margin:8px;border-radius:8px;position:relative;font-size:13.5px}
 .danger.slim{margin:6px 0 10px;padding-right:10px}
 .danger.mini{padding-right:10px}
-#warnHide{position:absolute;right:6px;top:6px;border:0;background:none;font-size:18px}
-.danger.col{max-height:40px;overflow:hidden}
+.saferemind{margin:6px 0 8px;padding:6px 8px;border-radius:8px;background:#fff3e0;border-left:4px solid var(--red);color:#5a1a00;font-size:12.5px}
+#support .danger{margin:0 0 10px;padding-right:10px}
+#support .offlineget{margin:0 0 12px}
+.guide{margin:0 0 8px;padding-left:18px}
+.guide li{margin:5px 0}
 main{padding:0 10px 90px}
 .view{display:none}.view.on{display:block}
 h2{font-size:18px;margin:12px 2px 8px}h3{margin:18px 2px 8px;font-size:16px}

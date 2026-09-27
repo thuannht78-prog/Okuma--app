@@ -14,22 +14,11 @@
 <body>
 <header class="bar">
   <div class="ttl"><b id="headTitle">Okuma LB3000EX II</b><small id="headSub">OSP-P300L · Quản lý setup</small></div>
-  <span id="netState" class="pill">●</span>
+  <div class="baracts">
+    <button type="button" id="btnSupport" class="helpbtn" aria-label="Hỗ trợ">?</button>
+    <span id="netState" class="pill">●</span>
+  </div>
 </header>
-<div id="warnTop" class="danger">
-  ⚠ <b>BẮT BUỘC:</b> chương trình phải được kiểm tra bằng <b>chạy thử không phôi (dry run)</b>, override thấp, từng block (single block) hoặc <b>mô phỏng trên máy</b> trước khi cắt. Ứng dụng chỉ hỗ trợ soạn thảo – người vận hành chịu trách nhiệm kiểm tra.
-  <button id="warnHide" aria-label="Thu gọn">▴</button>
-</div>
-<div id="offlineGet" class="offlineget">
-  <b class="offh">Chạy không cần mạng</b>
-  <a class="offdl" id="btnOfflineHtml" href="./download/okuma-app-offline.html" download="okuma-app-offline.html">Tải bản chạy offline</a>
-  <a class="offzip" id="btnOfflineZip" href="./download/okuma-app-offline.zip" download="okuma-app-offline.zip">Tải gói zip</a>
-  <p class="small">Một tệp HTML: mở trực tiếp, không cần mạng và không cần máy chủ. Dữ liệu vẫn lưu trong trình duyệt của máy này.
-  <b>Android:</b> tải về, rồi mở bằng Chrome hoặc trình quản lý tệp.
-  <b>iPhone:</b> nếu Safari mở luôn trang, bấm Chia sẻ → Lưu vào Tệp, rồi mở tệp đó bằng Safari.
-  <b>Windows/Mac:</b> nháy đúp tệp HTML.
-  Bản đã <b>thêm vào màn hình chính</b> (Add to Home Screen) cũng chạy offline sau lần mở đầu.</p>
-</div>
 
 <main>
   <section id="v-setup" class="view on">
@@ -79,6 +68,36 @@
   <div class="sheetin">
     <div class="sheeth"><b id="sheetTitle">Thêm nguyên công</b><button id="sheetClose" aria-label="Đóng">✕</button></div>
     <div id="sheetBody"></div>
+  </div>
+</div>
+<div id="support" class="sheet" hidden>
+  <div class="sheetin" id="supportIn">
+    <div class="sheeth"><b>Hỗ trợ</b><button type="button" id="supportClose" aria-label="Đóng">✕</button></div>
+    <div id="warnTop" class="danger">
+      ⚠ <b>BẮT BUỘC:</b> chương trình phải được kiểm tra bằng <b>chạy thử không phôi (dry run)</b>, override thấp, từng block (single block) hoặc <b>mô phỏng trên máy</b> trước khi cắt. Ứng dụng chỉ hỗ trợ soạn thảo – người vận hành chịu trách nhiệm kiểm tra.
+    </div>
+    <div id="offlineGet" class="offlineget">
+      <b class="offh">Chạy không cần mạng</b>
+      <div id="offlineBtns">
+        <a class="offdl" id="btnOfflineHtml" href="./download/okuma-app-offline.html" download="okuma-app-offline.html">Tải bản chạy offline</a>
+        <a class="offzip" id="btnOfflineZip" href="./download/okuma-app-offline.zip" download="okuma-app-offline.zip">Tải gói zip</a>
+        <p class="small">Một tệp HTML: mở trực tiếp, không cần mạng và không cần máy chủ. Dữ liệu vẫn lưu trong trình duyệt của máy này.
+        <b>Android:</b> tải về, rồi mở bằng Chrome hoặc trình quản lý tệp.
+        <b>iPhone:</b> nếu Safari mở luôn trang, bấm Chia sẻ → Lưu vào Tệp, rồi mở tệp đó bằng Safari.
+        <b>Windows/Mac:</b> nháy đúp tệp HTML.
+        Bản đã <b>thêm vào màn hình chính</b> (Add to Home Screen) cũng chạy offline sau lần mở đầu.</p>
+      </div>
+    </div>
+    <h3>Quy trình IGF (6 bước)</h3>
+    <ol class="guide">
+      <li><b>Thiết lập</b> (BLANK/SETUP) — máy, dao, mâm, ụ động.</li>
+      <li><b>Phôi</b> (BLANK) — vật liệu, Ø, chiều dài, mốc Z.</li>
+      <li><b>Biên dạng</b> (TURNING SHAPE) — nét tinh của chi tiết.</li>
+      <li><b>Nguyên công</b> (PROCESS DECIDE) — danh sách gia công, kể cả nguyên công thêm tay.</li>
+      <li><b>Mô phỏng</b> — xem đường dao 2D/3D, rồi chạy hết trước khi xuất.</li>
+      <li><b>Xuất code</b> (PROGRAM CREATE) — tải tệp .MIN. Trên máy vẫn phải chạy thử không phôi.</li>
+    </ol>
+    <p class="small">Từ màn Quản lý setup: tạo setup mới, mở bản đã lưu, hoặc sao chép. Dữ liệu lưu trên máy này.</p>
   </div>
 </div>
 <div id="toast" class="toast"></div>

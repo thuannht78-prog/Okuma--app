@@ -1244,6 +1244,7 @@
         </form>`;
     } else if (igfStep === 5) {
       body += `<p class="hint">Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. Phôi tròn bóc dần theo cùng đường dao. Một ngón xoay theo tay, hai ngón vừa phóng vừa kéo.</p>
+        <p class="saferemind" id="safeSim">⚠ Trước khi cắt: chạy thử không phôi (dry run) trên máy.</p>
         <div class="simgate danger slim"></div>
         <form id="igfForm" class="form" autocomplete="off">
         <div class="simbar" id="simViewBar">
@@ -1277,6 +1278,7 @@
         <form id="igfForm" class="form" autocomplete="off">
         <p>Phôi Ø${esc(ig.od)} × ${esc(ig.ol)} ${esc(ig.material)} · ${P.ops.length} nguyên công.</p>
         <label class="fld"><span>Tên tệp .MIN</span><input id="fname" type="text" value="${esc(O.asc(P.settings.progName).replace(/[^A-Z0-9]/g, '') || 'PROG')}"></label>
+        <p class="saferemind" id="safeExport">⚠ Trước khi cắt: chạy thử không phôi (dry run) trên máy.</p>
         <div class="btns">
           <button type="button" class="b1" id="btnCopy">Sao chép</button>
           <button type="button" class="b1" id="igfDl">Tải .MIN</button>
@@ -1398,7 +1400,10 @@
     }
   }
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showView(b.dataset.v));
-  $('#warnHide').onclick = () => { const w = $('#warnTop'); w.classList.toggle('col'); $('#warnHide').textContent = w.classList.contains('col') ? '▾' : '▴'; };
+  function closeSupport() { const s = $('#support'); if (s) s.hidden = true; }
+  $('#btnSupport').onclick = () => { const s = $('#support'); s.hidden = false; const inn = $('#supportIn'); if (inn) inn.scrollTop = 0; };
+  $('#supportClose').onclick = closeSupport;
+  $('#support').addEventListener('click', e => { if (e.target.id === 'support') closeSupport(); });
   $('#setupNew').onclick = () => askName('Tạo setup mới', 'Sản phẩm mới', 'Tạo', nm => {
     const prog = O.asc(nm).replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'NEW';
     beginSetup(nm, {

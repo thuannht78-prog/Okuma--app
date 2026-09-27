@@ -57,7 +57,7 @@ function buildHtml() {
     ['<script src="./ui.js"></script>', inlineScript(ui)],
     ['href="./download/okuma-app-offline.html"', `href="${PAGES}/download/okuma-app-offline.html"`],
     ['href="./download/okuma-app-offline.zip"', `href="${PAGES}/download/okuma-app-offline.zip"`],
-    ['<div id="offlineGet" class="offlineget">', '<div id="offlineGet" class="offlineget">\n  <p class="offnow"><b>Đây là bản một tệp.</b> Đang mở được khi không có mạng. Hai nút bên dưới chỉ để tải lại khi có mạng.</p>']
+    ['<div id="offlineBtns">', '<p class="offnow" id="offlineNote"><b>Đây là bản một tệp.</b> Bạn đang mở bản offline, không cần mạng và không cần tải lại.</p>\n      <div id="offlineBtns" hidden>']
   ];
   for (const [from, to] of replacements) {
     if (!html.includes(from)) throw new Error('Không tìm thấy đoạn cần thay trong index.html: ' + from.slice(0, 80));

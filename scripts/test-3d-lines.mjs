@@ -239,7 +239,7 @@ async function runFile() {
   try {
     await prep(cdp, true);
     await cdp.send('Page.navigate', { url: 'file://' + htmlPath });
-    await waitFor(cdp, `document.readyState === 'complete' && !!document.querySelector('#btnOfflineHtml')`);
+    await waitFor(cdp, `document.readyState === 'complete' && !!document.querySelector('#btnSupport')`);
     const online = await ev(cdp, `navigator.onLine`);
     const page = await runPage(cdp, errors, 'offline');
     if (online !== false) errors.push('onLine=' + online);
