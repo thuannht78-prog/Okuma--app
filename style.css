@@ -96,6 +96,7 @@ canvas{width:100%;height:auto;display:block;touch-action:manipulation}
 .bd.v{background:#e8f5e9;color:var(--ok)}.bd.f{background:#fff8e1;color:#8d6e00}.bd.u{background:#ffebee;color:var(--red)}
 @media (min-width:760px){main{max-width:760px;margin:0 auto}.typegrid{grid-template-columns:1fr 1fr 1fr}}
 .wdet{background:#fff;border-radius:10px;padding:8px 10px;margin:8px 0;font-size:14px}.wdet summary{font-weight:600;color:#a04b00}
+.v32frame{display:block;width:100%;height:min(640px,calc(100vh - 210px));min-height:420px;border:0;border-radius:12px;background:#15171b;margin:0 0 8px}
 .igfsteps{display:flex;gap:3px;margin:4px 0 8px;overflow-x:auto}
 .igfsteps button{flex:1 0 46px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 2px;font-size:9px;line-height:1.15;color:var(--mut)}
 .igfsteps button.on{background:var(--pri);color:#fff;border-color:var(--pri);font-weight:600}

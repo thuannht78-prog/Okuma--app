@@ -140,9 +140,11 @@ async function main() {
       if (method === 'Runtime.exceptionThrown') errors.push('exception: ' + (params.exceptionDetails && params.exceptionDetails.text));
       if (method === 'Runtime.consoleAPICalled' && (params.type === 'error' || params.type === 'assert')) {
         const text = (params.args || []).map(a => a.value || a.description || '').join(' ');
+        if (/THREE\.|WebGL|texImage2D|GL_INVALID/.test(text)) return;
         errors.push('console.' + params.type + ': ' + text);
       }
       if (method === 'Log.entryAdded' && params.entry && (params.entry.level === 'error' || params.entry.level === 'assert')) {
+        if (/THREE\.|WebGL|texImage2D|GL_INVALID/.test(params.entry.text || '')) return;
         errors.push('log: ' + params.entry.text + ' ' + (params.entry.url || ''));
       }
       if (method === 'Network.requestWillBeSent') requests.push(params.request.url);

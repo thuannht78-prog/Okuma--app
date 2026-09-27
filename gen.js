@@ -849,7 +849,8 @@
     tools: null,
     decidePattern: 'standard', decided: false,
     ddt: true, fileName: '',
-    elems: []
+    elems: [],
+    inSx: 20, inSz: 0, innerElems: null, mills: null
   };
   function ensureTools(ig) {
     if (!ig) return [];
@@ -974,26 +975,52 @@
     if (g.decidePattern && g.decidePattern !== 'standard') {
       notes.push('Mẫu PROCESS DECIDE đã lưu. Ứng dụng vẫn chọn G85 khi X đơn điệu và G86 khi không. Bốn sổ quy tắc IGF không được mô phỏng.');
     }
-    if (sh.pts.length < 2) return { ops: [], notes: notes.concat(['Biên dạng (TURNING SHAPE) cần ít nhất một đoạn sau điểm đầu.']), preview: [] };
+    const innerElems = Array.isArray(g.innerElems) ? g.innerElems : [];
+    if (sh.pts.length < 2 && innerElems.length < 1) return { ops: [], notes: notes.concat(['Biên dạng (TURNING SHAPE) cần ít nhất một đoạn sau điểm đầu.']), preview: [] };
     let pts = sh.pts.map(p => ({ x: p.x, z: toGenZ(p.z, g), t: p.t, r: p.r }));
-    const zMax = Math.max(...pts.map(p => p.z));
-    if (zMax < -1e-6 || zMax > 1e-6) pts = pts.map(p => ({ x: p.x, z: Math.round((p.z - zMax) * 1000) / 1000, t: p.t, r: p.r }));
+    const zMax = pts.length ? Math.max(...pts.map(p => p.z)) : 0;
+    const shift = (zMax < -1e-6 || zMax > 1e-6) ? zMax : 0;
+    if (shift) pts = pts.map(p => ({ x: p.x, z: Math.round((p.z - shift) * 1000) / 1000, t: p.t, r: p.r }));
     const faceStock = Math.max(0, Math.round((-zMax) * 1000) / 1000);
     const ops = [];
     const add = (type, patch) => { const o = newOp(type); Object.assign(o, patch); ops.push(o); };
-    if (faceStock > 0.02) add('facing', { tool: g.roughT, vc: M.vr, feed: M.fr, ffeed: M.ff, zStock: faceStock, doc: Math.max(0.5, M.dx / 2), finish: Math.min(0.2, faceStock), xEnd: Math.min(0, pts[0].x) - 1 });
+    if (pts.length >= 2 && faceStock > 0.02) add('facing', { tool: g.roughT, vc: M.vr, feed: M.fr, ffeed: M.ff, zStock: faceStock, doc: Math.max(0.5, M.dx / 2), finish: Math.min(0.2, faceStock), xEnd: Math.min(0, pts[0].x) - 1 });
     if (g.useCenter) {
       add('drill', { tool: 5, isCenter: true, dia: num(g.tailD, 20) > 8 ? 5 : 4, zs: 3, zb: -6, rpm: 1000, feed: 0.08, peck: 0 });
       add('tailOn', { note: 'USE CENTER' });
     }
-    const mode = monotonicX(pts, false) ? 'G85' : 'G86';
-    if (mode === 'G86') notes.push('Biên dạng không đơn điệu theo X — PROCESS DECIDE chọn chu trình chép hình G86 (COPYING).');
     const U = Math.round(num(M.lx, 0.2) * 2 * 1000) / 1000;
-    add('od', {
-      tool: g.roughT, ftool: g.finishT, mode, vc: M.vr, vcf: M.vf,
-      D: M.dx, F: M.fr, U, W: M.lz, ff: M.ff, comp: true,
-      startZ: Math.max(2, faceStock + 1), startX: '', useTail: !!g.useCenter, pts
-    });
+    let mode = '';
+    if (pts.length >= 2) {
+      mode = monotonicX(pts, false) ? 'G85' : 'G86';
+      if (mode === 'G86') notes.push('Biên dạng không đơn điệu theo X — PROCESS DECIDE chọn chu trình chép hình G86 (COPYING).');
+      add('od', {
+        tool: g.roughT, ftool: g.finishT, mode, vc: M.vr, vcf: M.vf,
+        D: M.dx, F: M.fr, U, W: M.lz, ff: M.ff, comp: true,
+        startZ: Math.max(2, faceStock + 1), startX: '', useTail: !!g.useCenter, pts
+      });
+    }
+    if (innerElems.length) {
+      const inn = resolveElems(g, innerElems, g.inSx, g.inSz);
+      notes.push.apply(notes, inn.notes.map(n => '[LỖ TRONG] ' + n));
+      let ipts = inn.pts.map(p => ({ x: p.x, z: Math.round((toGenZ(p.z, g) - shift) * 1000) / 1000, t: p.t, r: p.r }));
+      if (ipts.length >= 2) {
+        const modeI = monotonicX(ipts, true) ? 'G85' : 'G86';
+        if (modeI === 'G86') notes.push('Biên dạng lỗ không đơn điệu theo X — tiện trong dùng G86.');
+        const bore = num(g.id, 0) > 0 ? num(g.id, 0) : Math.min.apply(null, ipts.map(p => p.x));
+        add('id', {
+          tool: g.boreT, ftool: g.boreT, mode: modeI, bore,
+          vc: M.vr, vcf: M.vf, D: Math.max(1, M.dx * 0.8), F: M.fr, U, W: M.lz, ff: M.ff, comp: true,
+          startZ: 2, startX: '', useTail: false, pts: ipts
+        });
+      }
+    }
+    const mills = Array.isArray(g.mills) ? g.mills : [];
+    if (mills.length) {
+      notes.push('Studio có ' + mills.length + ' phần tử phay (lỗ, rãnh, pocket, vát). Chúng được ghi chú trong chương trình; chu trình dao động lực thêm ở PROCESS EDIT.');
+      const line = mills.map(m => String(m.type || 'MILL')).join(' ');
+      add('raw', { code: '(STUDIO MILL ' + line + ')' });
+    }
     if (g.blankId === 'thru' || g.blankId === 'blind') {
       const bore = num(g.id, 0);
       const depth = g.blankId === 'blind' ? Math.min(num(g.ol, 10), num(g.idDepth, num(g.ol, 10))) : Math.min(num(g.ol, 10), num(g.ol, 10) - 5);

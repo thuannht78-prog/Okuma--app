@@ -20,6 +20,8 @@
     if (p.settings.jawOd) p.igf.jawD3 = p.settings.jawOd;
     if (p.settings.tailDia) p.igf.tailD = p.settings.tailDia;
     p.igf.flowV = 2;
+    if (!Array.isArray(p.igf.innerElems)) p.igf.innerElems = [];
+    if (!Array.isArray(p.igf.mills)) p.igf.mills = [];
     O.ensureTools(p.igf);
     return p;
   }
@@ -565,7 +567,135 @@
     </details>`;
   }
   const EL_VI = { face: 'Mặt đầu (FACE)', long: 'Dọc trục (LONG)', taper: 'Côn (TAPER)', cchf: 'Vát (C-CHF)', rchf: 'Bo tròn (R-CHF)', cw: 'Cung thuận (CW)', ccw: 'Cung ngược (CCW)', jump: 'Nhảy (JUMP)' };
-  function igf() { if (!P.igf) P.igf = Object.assign({}, O.DEFAULT_IGF); O.ensureTools(P.igf); return P.igf; }
+  function igf() { if (!P.igf) P.igf = Object.assign({}, O.DEFAULT_IGF); O.ensureTools(P.igf); if (!Array.isArray(P.igf.innerElems)) P.igf.innerElems = []; if (!Array.isArray(P.igf.mills)) P.igf.mills = []; return P.igf; }
+  const V32_URL = './v32/studio.html';
+  const V32_TYPE = { face: 'FACE', long: 'LONG', taper: 'TAPER', cchf: 'CCHF', rchf: 'RCHF', ccw: 'ARC_CCW', cw: 'ARC_CW' };
+  const V32_FROM = { FACE: 'face', LONG: 'long', TAPER: 'taper', CCHF: 'cchf', RCHF: 'rchf', ARC_CCW: 'ccw', ARC_CW: 'cw' };
+  function v32Elems(list, z0, x0) {
+    let z = Number(z0) || 0, x = Number(x0) || 0;
+    return (list || []).map((e, i) => {
+      const type = V32_TYPE[e.t];
+      if (!type) return null;
+      const o = { id: 'e' + i, type };
+      if (e.t === 'face') { o.x = Number(e.x); x = o.x; }
+      else if (e.t === 'long') { o.z = Number(e.z); z = o.z; }
+      else if (e.t === 'taper') {
+        let zz = e.z, xx = e.x;
+        if ((zz === '' || zz == null) && e.ang != null && e.x != null && e.x !== '') {
+          const ang = Number(e.ang) * Math.PI / 180, dr = Number(e.x) / 2 - x / 2, s = Math.sin(ang);
+          zz = Math.abs(s) < 1e-6 ? z : z + dr * Math.cos(ang) / s;
+          xx = Number(e.x);
+        }
+        o.x = Number(xx);
+        o.z = zz === '' || zz == null ? z : Number(zz);
+        if (isFinite(o.x)) x = o.x;
+        if (isFinite(o.z)) z = o.z;
+      } else if (e.t === 'cchf') o.c = Number(e.c) || 0;
+      else if (e.t === 'rchf') o.r = Number(e.r) || 0;
+      else { o.x = Number(e.x); o.z = Number(e.z); o.r = Number(e.r) || 0; x = o.x; z = o.z; }
+      return o;
+    }).filter(Boolean);
+  }
+  function igfToV32(ig) {
+    return {
+      blank: { material: ig.material || 'S45C', od: Number(ig.od) || 0, ol: Number(ig.ol) || 0, id: ig.blankId === 'none' ? 0 : (Number(ig.id) || 0) },
+      start: { sx: Number(ig.sx) || 0, sz: Number(ig.sz) || 0 },
+      elements: v32Elems(ig.elems, ig.sz, ig.sx),
+      inStart: { sx: Number(ig.inSx) || 0, sz: Number(ig.inSz) || 0 },
+      inElements: v32Elems(ig.innerElems, ig.inSz, ig.inSx),
+      mills: ig.mills || [],
+      side: 'out'
+    };
+  }
+  function v32ToElems(list) {
+    return (list || []).map(e => {
+      const t = V32_FROM[e.type];
+      if (!t) return null;
+      const o = { t };
+      if (e.x != null && e.x !== '') o.x = Number(e.x);
+      if (e.z != null && e.z !== '') o.z = Number(e.z);
+      if (e.r != null && e.r !== '') o.r = Number(e.r);
+      if (e.c != null && e.c !== '') o.c = Number(e.c);
+      return o;
+    }).filter(Boolean);
+  }
+  function profileSig(ig) {
+    return JSON.stringify({
+      od: ig.od, ol: ig.ol, material: ig.material, blankId: ig.blankId, id: ig.id,
+      sx: ig.sx, sz: ig.sz, inSx: ig.inSx, inSz: ig.inSz, zeroRef: ig.zeroRef, zeroPos: ig.zeroPos,
+      elems: ig.elems, inner: ig.innerElems, mills: ig.mills
+    });
+  }
+  let v32PushOnce = false;
+  let v32Pushed = '';
+  function v32Canon(st) {
+    if (!st) return '';
+    return JSON.stringify({
+      blank: st.blank || null,
+      start: st.start || null,
+      elements: st.elements || [],
+      inStart: st.inStart || null,
+      inElements: st.inElements || [],
+      mills: st.mills || []
+    });
+  }
+  function pushV32(force) {
+    const f = $('#v32frame');
+    if (!f || !f.contentWindow) return;
+    if (v32PushOnce && !force) return;
+    v32PushOnce = true;
+    const state = igfToV32(igf());
+    v32Pushed = v32Canon(state);
+    f.contentWindow.postMessage({ source: 'okuma', type: 'load', state }, '*');
+  }
+  function applyV32State(st, commit) {
+    if (!st || !activeSetup()) return;
+    if (v32Canon(st) === v32Pushed) return;
+    const ig = igf();
+    const before = profileSig(ig);
+    if (st.blank) {
+      if (st.blank.od) ig.od = Number(st.blank.od) || ig.od;
+      if (st.blank.ol) ig.ol = Number(st.blank.ol) || ig.ol;
+      if (st.blank.material && O.MATERIALS[st.blank.material]) ig.material = st.blank.material;
+      const id = Number(st.blank.id) || 0;
+      if (id > 0) { ig.blankId = ig.blankId === 'blind' ? 'blind' : 'thru'; ig.id = id; }
+    }
+    if (st.start) { ig.sx = Number(st.start.sx) || 0; ig.sz = Number(st.start.sz) || 0; }
+    if (st.inStart) { ig.inSx = Number(st.inStart.sx) || 0; ig.inSz = Number(st.inStart.sz) || 0; }
+    if (Array.isArray(st.elements)) ig.elems = v32ToElems(st.elements);
+    if (Array.isArray(st.inElements)) ig.innerElems = v32ToElems(st.inElements);
+    if (Array.isArray(st.mills)) ig.mills = st.mills;
+    if (ig.od) P.settings.stockD = Number(ig.od) || P.settings.stockD;
+    if (ig.ol) P.settings.stockL = Number(ig.ol) || P.settings.stockL;
+    if (ig.material) P.settings.material = ig.material;
+    const zs = []
+      .concat(st.start && st.start.sz != null ? [Number(st.start.sz)] : [])
+      .concat((st.elements || []).map(e => e.z).filter(z => z != null && z !== '').map(Number));
+    if (zs.length && Math.max.apply(null, zs) <= 0.5 && Math.min.apply(null, zs) < -0.5) {
+      ig.zeroRef = 'right';
+      ig.zeroPos = 0;
+    }
+    const changed = before !== profileSig(ig);
+    syncIgfToSettings();
+    save();
+    if (commit || changed) {
+      P.ops = [];
+      ig.decided = false;
+      igfDidAuto = false;
+      simDoneSig = null;
+    }
+    if ($('#igfCv')) drawIgf();
+    const list = $('#elList');
+    if (list && igfStep === 3) list.innerHTML = (ig.elems || []).map(elCard).join('') || '<p class="empty">Chưa có đoạn nào. Thêm FACE, LONG…</p>';
+    if (commit) toast('Đã đưa biên dạng Studio vào quy trình OSP');
+    v32Pushed = v32Canon(st);
+  }
+  window.addEventListener('message', ev => {
+    const d = ev.data;
+    if (!d || d.source !== 'igf32') return;
+    if (d.type === 'loaded') window.__v32Loaded = true;
+    if (d.type === 'state' && d.state) applyV32State(d.state, !!d.commit);
+  });
   function numInp(k, v, label) {
     return `<label class="fld"><span>${esc(label)}</span><input data-k="${k}" type="number" inputmode="decimal" step="any" value="${esc(v ?? '')}"></label>`;
   }
@@ -1253,7 +1383,7 @@
         <div id="prevDock3d"></div>
       </div>`;
   }
-  function goStep(n) {
+  function finishGo(n) {
     n = Math.max(1, Math.min(7, Number(n) || 1));
     if (n !== 6) stopSim();
     igfStep = n;
@@ -1262,6 +1392,16 @@
     renderIgf();
     const box = $('#flowSteps');
     if (box) box.scrollIntoView({ block: 'start', inline: 'nearest' });
+  }
+  function goStep(n) {
+    n = Math.max(1, Math.min(7, Number(n) || 1));
+    if (igfStep === 3 && n !== 3) {
+      const f = $('#v32frame');
+      if (f && f.contentWindow) f.contentWindow.postMessage({ source: 'okuma', type: 'get' }, '*');
+      setTimeout(() => finishGo(n), 320);
+      return;
+    }
+    finishGo(n);
   }
   function renderIgf() {
     const root = $('#igfRoot'); if (!root) return;
@@ -1287,7 +1427,13 @@
         </form>`;
     } else if (igfStep === 3) {
       const pv = O.shapePreview(ig);
-      body += `<p class="hint">TURNING SHAPE (LE32-239 P-20–38, LE32-238 P-96): điểm đầu (START PT. SX, SZ), chiều (DEF. DIR.), rồi từng đoạn FACE, TAPER, LONG, C-CHF, R-CHF, CW/CCW. JUMP kết thúc nét; trên máy phím E chép điểm đầu. Vát và bo đứng giữa hai đoạn thẳng. Ví dụ TEST1: SX 0, SZ 80, CCW.</p>
+      body += `<p class="hint">TURNING SHAPE dùng IGF Profile 3D Studio v32: phôi, điểm đầu, biên dạng NGOÀI và LỖ TRONG, bản vẽ 2D và khối 3D. Nút <b>ĐƯA VÀO OSP</b> (hoặc sửa trong Studio) ghi biên dạng vào quy trình để quyết định, mô phỏng và xuất .MIN. JSON của Studio nhập lại được ở dưới.</p>
+        <iframe id="v32frame" class="v32frame" title="IGF Profile 3D Studio v32" src="${esc(V32_URL)}"></iframe>
+        <div class="btns">
+          <button type="button" class="b2" id="v32Pull">Lấy biên dạng từ Studio</button>
+          <button type="button" class="b2" id="v32Push">Đẩy danh sách vào Studio</button>
+          <label class="b2 file">Nhập JSON Studio<input id="v32Import" type="file" accept=".json,application/json"></label>
+        </div>
         <form id="igfForm" class="form" autocomplete="off">
         <div class="grid2">${numInp('sx', ig.sx, 'Điểm đầu X, Ø (START PT. SX)')}${numInp('sz', ig.sz, 'Điểm đầu Z (START PT. SZ)')}</div>
         <label class="fld"><span>Chiều định nghĩa (DEF. DIR.)</span><select data-k="dir"><option ${ig.dir !== 'CW' ? 'selected' : ''}>CCW</option><option ${ig.dir === 'CW' ? 'selected' : ''}>CW</option></select></label>
@@ -1301,7 +1447,7 @@
         </form>`;
     } else if (igfStep === 4) {
       if (P.ops.length) igfDidAuto = true;
-      else if ((ig.elems || []).length && !igfDidAuto) {
+      else if (((ig.elems || []).length || (ig.innerElems || []).length) && !igfDidAuto) {
         const d = applyIgf();
         if (d.ops && d.ops.length) { igfDidAuto = true; persistLib(); }
       }
@@ -1395,7 +1541,24 @@
     paintFlowChrome();
     paintHeader();
     if (igfStep === 1) renderSettings();
-    if (igfStep === 3) drawIgf();
+    if (igfStep === 3) {
+      drawIgf();
+      v32PushOnce = false;
+      const fr = $('#v32frame');
+      if (fr) fr.addEventListener('load', () => pushV32(true));
+      const imp = $('#v32Import');
+      if (imp) imp.onchange = e => {
+        const fl = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!fl) return;
+        fl.text().then(t => {
+          const j = JSON.parse(t);
+          if (!j || (!j.elements && !j.blank && !j.start)) throw new Error('Không phải hồ sơ Studio v32');
+          applyV32State(j, true);
+          pushV32(true);
+        }).catch(er => alert('Lỗi: ' + er.message));
+      };
+    }
     if (igfStep === 5) renderOps();
     paintColorInputs();
     paintPathControls();
@@ -1511,6 +1674,12 @@
       if (P.ops.length && !confirm('Ghi đè danh sách nguyên công bằng kết quả quyết định từ biên dạng?')) return;
       const d = applyIgf(); save(); renderIgf(); toast('Đã quyết định ' + d.ops.length + ' nguyên công'); return;
     }
+    if (e.target.id === 'v32Pull') {
+      const f = $('#v32frame');
+      if (f && f.contentWindow) f.contentWindow.postMessage({ source: 'okuma', type: 'get' }, '*');
+      return;
+    }
+    if (e.target.id === 'v32Push') { pushV32(true); toast('Đã đẩy danh sách vào Studio'); return; }
     if (e.target.id === 'igfAdd') { $('#fab').hidden = false; $('#fab').click(); return; }
     if (e.target.id === 'sim2d' || e.target.id === 'sim3d' || e.target.id === 'simBoth') {
       simView = e.target.id === 'sim2d' ? '2d' : e.target.id === 'sim3d' ? '3d' : 'both';

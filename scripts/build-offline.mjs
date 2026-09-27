@@ -46,6 +46,12 @@ function buildHtml() {
     throw new Error('Không thấy dòng đăng ký service worker trong ui.js — script build cần cập nhật.');
   }
   ui = ui.replace(SW_LINE, '/* Bản một tệp: không đăng ký service worker (không có sw.js; file:// không hỗ trợ). */');
+  const studioPath = path.join(root, 'v32', 'studio.html');
+  if (!fs.existsSync(studioPath)) throw new Error('Thiếu v32/studio.html');
+  const studioJson = JSON.stringify(fs.readFileSync(studioPath, 'utf8')).replace(/<\/script/gi, '<\\/script');
+  const v32Line = "const V32_URL = './v32/studio.html';";
+  if (!ui.includes(v32Line)) throw new Error('Không thấy V32_URL trong ui.js');
+  ui = ui.replace(v32Line, () => 'const V32_URL = URL.createObjectURL(new Blob([' + studioJson + '],{type:\'text/html\'}));');
 
   const replacements = [
     ['<link rel="manifest" href="./manifest.webmanifest">\n', ''],
@@ -167,6 +173,8 @@ function buildZip(html) {
   const appDir = path.join(stage, 'app');
   fs.mkdirSync(path.join(appDir, 'samples'), { recursive: true });
   for (const name of APP_FILES) fs.copyFileSync(path.join(root, name), path.join(appDir, name));
+  fs.mkdirSync(path.join(appDir, 'v32'), { recursive: true });
+  fs.copyFileSync(path.join(root, 'v32', 'studio.html'), path.join(appDir, 'v32', 'studio.html'));
   fs.cpSync(path.join(root, 'samples'), path.join(appDir, 'samples'), { recursive: true });
   const zipPath = path.join(outDir, 'okuma-app-offline.zip');
   const r = spawnSync('zip', ['-X', '-r', '-9', zipPath, 'README.txt', 'okuma-app-offline.html', 'app'], {
