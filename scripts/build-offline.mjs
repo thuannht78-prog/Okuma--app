@@ -18,7 +18,7 @@ const PAGES = 'https://thuannht78-prog.github.io/Okuma--app';
 const SW_LINE = "if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { });";
 
 const APP_FILES = [
-  'index.html', 'style.css', 'gen.js', 'ui.js', 'sw.js',
+  'index.html', 'style.css', 'gen.js', 'ui.js', 'sim3d.js', 'sw.js',
   'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'README.md'
 ];
 
@@ -40,6 +40,7 @@ function buildHtml() {
   const css = read('style.css').toString('utf8');
   let ui = read('ui.js').toString('utf8');
   const gen = read('gen.js').toString('utf8');
+  const sim3d = read('sim3d.js').toString('utf8');
 
   if (!ui.includes(SW_LINE)) {
     throw new Error('Không thấy dòng đăng ký service worker trong ui.js — script build cần cập nhật.');
@@ -52,6 +53,7 @@ function buildHtml() {
     ['<link rel="apple-touch-icon" href="./icon-192.png">', `<link rel="apple-touch-icon" href="${dataUri('icon-192.png', 'image/png')}">`],
     ['<link rel="stylesheet" href="./style.css">', `<style>\n${css}\n</style>`],
     ['<script src="./gen.js"></script>', inlineScript(gen)],
+    ['<script src="./sim3d.js"></script>', inlineScript(sim3d)],
     ['<script src="./ui.js"></script>', inlineScript(ui)],
     ['href="./download/okuma-app-offline.html"', `href="${PAGES}/download/okuma-app-offline.html"`],
     ['href="./download/okuma-app-offline.zip"', `href="${PAGES}/download/okuma-app-offline.zip"`],
@@ -70,6 +72,7 @@ function buildHtml() {
     /href="\.\/manifest/,
     /serviceWorker\.register/,
     /src="\.\/gen\.js"/,
+    /src="\.\/sim3d\.js"/,
     /src="\.\/ui\.js"/
   ];
   for (const re of banned) {
@@ -79,7 +82,7 @@ function buildHtml() {
     throw new Error('HTML offline thiếu ứng dụng hoặc nút tải.');
   }
   const scripts = [...html.matchAll(/<script>\n([\s\S]*?)\n<\/script>/g)].map(m => m[1]);
-  if (scripts.length !== 2) throw new Error('Cần đúng 2 script nhúng, thấy ' + scripts.length);
+  if (scripts.length !== 3) throw new Error('Cần đúng 3 script nhúng, thấy ' + scripts.length);
   scripts.forEach((code, i) => {
     const file = path.join(os.tmpdir(), `okuma-offline-check-${i}.js`);
     fs.writeFileSync(file, code);
@@ -172,7 +175,7 @@ function buildZip(html) {
   fs.rmSync(stage, { recursive: true, force: true });
   if (r.status !== 0) throw new Error('zip thất bại:\n' + (r.stderr || r.stdout));
   const list = spawnSync('unzip', ['-l', zipPath], { encoding: 'utf8' });
-  const need = ['README.txt', 'okuma-app-offline.html', 'app/index.html', 'app/gen.js', 'app/ui.js', 'app/sw.js', 'app/style.css', 'app/samples/LB3000A.MIN'];
+  const need = ['README.txt', 'okuma-app-offline.html', 'app/index.html', 'app/gen.js', 'app/ui.js', 'app/sim3d.js', 'app/sw.js', 'app/style.css', 'app/samples/LB3000A.MIN'];
   for (const n of need) {
     if (!list.stdout.includes(n)) throw new Error('Zip thiếu ' + n);
   }

@@ -22,7 +22,7 @@ if (process.env.OKUMA_OFFLINE_NS !== '1' && !process.env.OKUMA_OFFLINE_NO_NS) {
   const script = fileURLToPath(import.meta.url);
   const r = spawnSync('unshare', [
     '--net', '--map-root-user', 'bash', '-c',
-    '/usr/sbin/ip link set lo up && OKUMA_OFFLINE_NS=1 node ' + JSON.stringify(script)
+    '(ip link set lo up || /usr/sbin/ifconfig lo up) && OKUMA_OFFLINE_NS=1 node ' + JSON.stringify(script)
   ], { stdio: 'inherit' });
   process.exit(r.status == null ? 1 : r.status);
 }

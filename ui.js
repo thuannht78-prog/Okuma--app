@@ -341,6 +341,8 @@
         h.beginPath(); h.moveTo(FX(xf * ux - half * vx), FY(xf * uy - half * vy)); h.lineTo(FX(xf * ux + half * vx), FY(xf * uy + half * vy)); h.stroke(); h.lineWidth = 1;
       }
     });
+    applyPrevView();
+    syncPrev3d();
   }
 
   // ---------- Tra cứu ----------
@@ -406,12 +408,13 @@
     const bd = { v: '<span class="bd v">Đã đối chiếu</span>', f: '<span class="bd f">Diễn đàn / suy luận</span>', u: '<span class="bd u">CHƯA XÁC MINH</span>' };
     $('#helpBody').innerHTML = `<p class="small muted">${esc(SRC)}</p>` +
       HELP.map(([t, rows]) => `<h3>${esc(t)}</h3><table class="htab">${rows.map(r => `<tr><td><code>${esc(r[0])}</code><br>${bd[r[2]]}</td><td>${esc(r[1])}</td></tr>`).join('')}</table>`).join('') +
-      `<div class="danger mini">Mô phỏng IGF là hình học 2D (chạy nhanh / chạy dao, phôi, biên dạng, chấu, chống tâm, vượt hành trình). Không phải bộ mô phỏng OSP và không biết hình dao thật. Luôn chạy thử không phôi trên máy.</div>`;
+      `<div class="danger mini">Mô phỏng IGF (2D và 3D) là ước lượng hình học: chạy nhanh / chạy dao, phôi bóc dần, chấu, chống tâm, ren, rãnh, lỗ dao động lực. Không phải bộ mô phỏng OSP và không biết hình dao thật. Luôn chạy thử không phôi trên máy.</div>`;
   }
 
   // ---------- IGF ----------
   let igfStep = 1, PATH = null, igfDidAuto = false;
   const sim = { play: false, mi: 0, u: 0, speed: 1, raf: 0, last: 0 };
+  let simView = 'both', simSection = false, prevView = '2d', prevSection = false;
   const EL_VI = { face: 'Mặt đầu (FACE)', long: 'Dọc trục (LONG)', taper: 'Côn (TAPER)', cchf: 'Vát (C-CHF)', rchf: 'Bo tròn (R-CHF)', cw: 'Cung thuận (CW)', ccw: 'Cung ngược (CCW)', jump: 'Nhảy (JUMP)' };
   function igf() { if (!P.igf) P.igf = Object.assign({}, O.DEFAULT_IGF); return P.igf; }
   function numInp(k, v, label) {
@@ -562,6 +565,53 @@
     if (st) st.textContent = `${pct}% · ${pos && pos.done ? 'đã chạy hết' : sim.play ? 'đang chạy' : 'dừng'} · ${nm}` + (pos && !pos.done && pos.kind ? ` · ${pos.kind === 'rapid' ? 'chạy nhanh' : 'chạy dao'}` : '') + (pos && pos.tail ? ' · có chống tâm' : '');
     document.querySelectorAll('#simChips button').forEach(b => b.classList.toggle('on', !!(pos && b.dataset.id === pos.id)));
     document.querySelectorAll('#hitList li').forEach(li => { li.style.opacity = (li.dataset.always === '1' || Number(li.dataset.at) <= sim.mi) ? '1' : '0.4'; });
+    syncSim3d(pos);
+  }
+  function applySimView() {
+    const w2 = $('#sim2dWrap'), w3 = $('#sim3dWrap');
+    if (w2) w2.hidden = simView === '3d';
+    if (w3) w3.hidden = simView === '2d';
+    [['sim2d', '2d'], ['sim3d', '3d'], ['simBoth', 'both']].forEach(([id, v]) => { const b = $('#' + id); if (b) b.classList.toggle('on', simView === v); });
+    const sb = $('#simSection'); if (sb) sb.classList.toggle('on', simSection);
+  }
+  function syncSim3d(pos) {
+    const V = window.OKU3D; if (!V) return;
+    const cv = $('#cvSim3d');
+    const show = !!(cv && simView !== '2d' && igfStep === 4 && $('#v-igf').classList.contains('on'));
+    if (!show) { if (V.current() === cv) V.unmount(); return; }
+    const S = Object.assign({}, O.DEFAULT_SETTINGS, P.settings);
+    V.mount(cv);
+    V.setSection(simSection);
+    V.update({
+      moves: PATH.moves, ops: P.ops, blank: PATH.blank, chuck: PATH.chuck,
+      mi: sim.mi, u: sim.u, playing: sim.play,
+      tailOn: !!(pos && pos.tail && S.tail !== 'none'), tailDia: PATH.tailDia
+    });
+  }
+  function applyPrevView() {
+    const w2 = $('#prev2dWrap'), w3 = $('#prev3dWrap');
+    if (w2) w2.hidden = prevView === '3d';
+    if (w3) w3.hidden = prevView !== '3d';
+    const b2 = $('#prev2d'), b3 = $('#prev3d');
+    if (b2) b2.classList.toggle('on', prevView === '2d');
+    if (b3) b3.classList.toggle('on', prevView === '3d');
+    const sb = $('#prevSection'); if (sb) sb.classList.toggle('on', prevSection);
+  }
+  function syncPrev3d() {
+    const V = window.OKU3D; if (!V) return;
+    const cv = $('#cvPrev3d');
+    const show = !!(cv && prevView === '3d' && $('#v-prev').classList.contains('on'));
+    if (!show) { if (V.current() === cv) V.unmount(); return; }
+    const path = O.buildToolpath(P);
+    const S = Object.assign({}, O.DEFAULT_SETTINGS, P.settings);
+    const last = path.moves.length ? path.moves[path.moves.length - 1] : null;
+    V.mount(cv);
+    V.setSection(prevSection);
+    V.update({
+      moves: path.moves, ops: P.ops, blank: path.blank, chuck: path.chuck,
+      mi: path.moves.length, u: 0, playing: false,
+      tailOn: !!(last && last.tail && S.tail !== 'none'), tailDia: path.tailDia
+    });
   }
   function finishPlay() {
     stopSim(); if (!PATH) return; sim.mi = PATH.moves.length; sim.u = 0;
@@ -585,6 +635,7 @@
   }
   function renderIgf() {
     const root = $('#igfRoot'); if (!root) return;
+    if (window.OKU3D && window.OKU3D.current() === $('#cvSim3d')) window.OKU3D.unmount();
     const ig = igf(), M = O.matOf(ig);
     const steps = [['1', 'Phôi'], ['2', 'Hình'], ['3', 'Nguyên công'], ['4', 'Mô phỏng'], ['5', 'Tạo mã']];
     let body = '';
@@ -646,7 +697,7 @@
             <div class="opb"><button type="button" data-a="up" aria-label="Lên">↑</button><button type="button" data-a="dn" aria-label="Xuống">↓</button><button type="button" data-a="ed">Sửa</button><button type="button" data-a="cp">Chép</button><button type="button" data-a="tg">${op.on === false ? 'Bật' : 'Tắt'}</button><button type="button" data-a="rm" aria-label="Xóa">🗑</button></div></li>`;
         }).join('') || '<li class="empty">Chưa có nguyên công. Thêm tay hoặc quyết định từ biên dạng.</li>'}</ol>`;
     } else if (igfStep === 4) {
-      body = `<p class="hint">Mô phỏng trước khi xuất mã. Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. Phôi xám, biên dạng tinh xanh lá, chấu xám đậm, chống tâm tím khi nòng đang tiến, tam giác đỏ = vị trí dao.</p>
+      body = `<p class="hint">Mô phỏng trước khi xuất mã. Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. 2D: phôi xám, biên dạng tinh xanh lá, chấu xám đậm, chống tâm tím, tam giác đỏ = dao. 3D: phôi quay và bóc dần theo cùng đường dao. Một ngón xoay, hai ngón phóng và kéo.</p>
         <div class="simbar">
           <button type="button" class="b1" id="simPlay">▶ Chạy</button>
           <button type="button" class="b2" id="simPause">⏸ Dừng</button>
@@ -656,7 +707,21 @@
         <label class="fld"><span>Tốc độ <b id="simSpdLab">${sim.speed}×</b></span><input id="simSpeed" type="range" min="0.25" max="4" step="0.25" value="${sim.speed}"></label>
         <p id="simStatus" class="small"></p>
         <div class="chips" id="simChips"></div>
-        <div class="cvwrap"><div class="cvt">Mặt cắt dọc · vùng phôi (không vẽ điểm thay dao)</div><canvas id="cvSim" width="760" height="420"></canvas></div>
+        <div class="simbar" id="simViewBar">
+          <button type="button" class="b2${simView === '2d' ? ' on' : ''}" id="sim2d">2D</button>
+          <button type="button" class="b2${simView === '3d' ? ' on' : ''}" id="sim3d">3D</button>
+          <button type="button" class="b2${simView === 'both' ? ' on' : ''}" id="simBoth">Cả hai</button>
+        </div>
+        <div class="cvwrap" id="sim2dWrap"${simView === '3d' ? ' hidden' : ''}><div class="cvt">Mặt cắt dọc 2D · vùng phôi (không vẽ điểm thay dao)</div><canvas id="cvSim" width="760" height="420"></canvas></div>
+        <div class="cvwrap" id="sim3dWrap"${simView === '2d' ? ' hidden' : ''}>
+          <div class="cvt">Mô phỏng 3D · phôi quay, bóc dần · một ngón xoay, hai ngón phóng và kéo</div>
+          <canvas id="cvSim3d" width="760" height="480"></canvas>
+          <div class="simbar">
+            <button type="button" class="b2${simSection ? ' on' : ''}" id="simSection">Mặt cắt</button>
+            <button type="button" class="b2" id="simCam">Đặt lại góc nhìn</button>
+          </div>
+          <p class="small muted">3D ước lượng tiện, rãnh, cắt đứt, khoan/tiện trong, ren và dao động lực. Không thay chạy thử không phôi trên máy.</p>
+        </div>
         <div class="legend"><span class="lg h">Chạy nhanh</span><span class="lg p">Chạy dao</span><span class="lg f">Biên dạng tinh</span><span class="lg t">Chống tâm</span></div>
         <div id="simHits"></div>`;
     } else {
@@ -675,7 +740,7 @@
       <div class="btns"><button type="button" class="b2" id="igfDemo">Nạp ví dụ trong sách (TEST1)</button></div>
       <form id="igfForm" class="form" autocomplete="off">${body}</form>`;
     if (igfStep === 2) drawIgf();
-    if (igfStep === 4) enterSim(true);
+    if (igfStep === 4) { applySimView(); enterSim(true); }
     if (igfStep === 5 && R) renderCode();
     else paintGate();
     const form = $('#igfForm');
@@ -740,6 +805,12 @@
       drawSim(); return;
     }
     if (e.target.id === 'simReset') { stopSim(); sim.mi = 0; sim.u = 0; drawSim(); return; }
+    if (e.target.id === 'sim2d' || e.target.id === 'sim3d' || e.target.id === 'simBoth') {
+      simView = e.target.id === 'sim2d' ? '2d' : e.target.id === 'sim3d' ? '3d' : 'both';
+      applySimView(); drawSim(); return;
+    }
+    if (e.target.id === 'simSection') { simSection = !simSection; applySimView(); drawSim(); return; }
+    if (e.target.id === 'simCam') { if (window.OKU3D) window.OKU3D.resetCam(); return; }
     if (e.target.id === 'igfCopy') { $('#btnCopy').click(); return; }
     if (e.target.id === 'igfDl') { $('#btnDl').click(); return; }
     if (e.target.id === 'igfGoOps') { document.querySelector('.tabs button[data-v="v-ops"]').click(); }
@@ -761,6 +832,10 @@
     document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === b.dataset.v));
     $('#fab').style.display = b.dataset.v === 'v-ops' ? '' : 'none';
     if (b.dataset.v !== 'v-igf') stopSim();
+    if (window.OKU3D) {
+      if (b.dataset.v !== 'v-igf' && window.OKU3D.current() === $('#cvSim3d')) window.OKU3D.unmount();
+      if (b.dataset.v !== 'v-prev' && window.OKU3D.current() === $('#cvPrev3d')) window.OKU3D.unmount();
+    }
     if (b.dataset.v === 'v-prev') drawPreview();
     if (b.dataset.v === 'v-igf') renderIgf();
     window.scrollTo(0, 0);
@@ -775,6 +850,11 @@
   if (!P.ops.length && !localStorage.getItem(KEY)) P = O.sampleProject();
   renderSettings(); renderHelp(); refresh();
   const igfBox = $('#igfRoot'); if (igfBox) igfBox.addEventListener('click', igfRootClick);
+  const prev2 = $('#prev2d'), prev3 = $('#prev3d'), prevSec = $('#prevSection'), prevCam = $('#prevCam');
+  if (prev2) prev2.onclick = () => { prevView = '2d'; applyPrevView(); drawPreview(); };
+  if (prev3) prev3.onclick = () => { prevView = '3d'; applyPrevView(); drawPreview(); };
+  if (prevSec) prevSec.onclick = () => { prevSection = !prevSection; applyPrevView(); drawPreview(); };
+  if (prevCam) prevCam.onclick = () => { if (window.OKU3D) window.OKU3D.resetCam(); };
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { });
   // mở tab theo hash (dùng cho chụp màn hình)
   let hv = { '#code': 'v-code', '#prev': 'v-prev', '#set': 'v-set', '#help': 'v-help' }[location.hash];
