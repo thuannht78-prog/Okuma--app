@@ -4,7 +4,7 @@
   const O = window.OKU, $ = s => document.querySelector(s);
   const OLD_KEY = 'okuma_lb3000_v1', LIB_KEY = 'okuma_lb3000_setups_v1';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  let LIB = null, P = null, R = null, selId = null, igfStep = 1;
+  let LIB = null, P = null, R = null, selId = null, igfStep = 1, pdFocus = null, pdAnchor = null;
 
   function normalizeProject(j) {
     const p = {
@@ -23,6 +23,7 @@
     if (!Array.isArray(p.igf.innerElems)) p.igf.innerElems = [];
     if (!Array.isArray(p.igf.mills)) p.igf.mills = [];
     O.ensureTools(p.igf);
+    O.migrateDecide(p);
     return p;
   }
   function newId() { return Math.random().toString(36).slice(2, 10); }
@@ -1307,6 +1308,7 @@
       <div class="grid2">${numTk('angle', t.angle, 'Góc mũi (TOOL ANGLE)')}${numTk('edge', t.edge, 'Góc cạnh (EDGE ANGLE)')}</div>
       ${roleSel('role', t.role, 'Chức năng (PROCESS KIND)')}
       ${roleSel('role2', t.role2, 'Chức năng phụ (PROCESS KIND)')}
+      <label class="fld"><span>Tay dao (HAND)</span><select data-tk="hand"><option value="RH" ${t.hand !== 'LH' ? 'selected' : ''}>RH — tay phải, cắt Z− về mâm</option><option value="LH" ${t.hand === 'LH' ? 'selected' : ''}>LH — tay trái, cắt Z+ ra khỏi mâm</option></select></label>
       <div class="grid2">${numTk('t', t.t, 'Số dao (T No.)')}${numTk('offset', t.offset, 'Số bù (OFFSET No.)')}</div>
     </div>`;
   }
@@ -1403,6 +1405,194 @@
     }
     finishGo(n);
   }
+  function dirLabel(dir) {
+    return { Zm: 'Hướng Z− ← về mâm', Zp: 'Hướng Z+ → ra khỏi mâm', Xm: 'Hướng X− ↓ về tâm', Xp: 'Hướng X+ ↑ ra ngoài' }[dir] || dir;
+  }
+  function pdWarnHTML(op) {
+    const notes = O.toolCheck(igf(), op);
+    return notes.length ? notes.map(n => `<p class="opw warn">⚠ ${esc(n)}</p>`).join('') : '';
+  }
+  function toolOptions(op) {
+    const tools = igf().tools || [];
+    return tools.map(t => `<option value="${esc(t.t)}" ${Number(op.tool) === Number(t.t) ? 'selected' : ''}>T${esc(t.t)} ${esc(t.role || '')} ${esc(t.hand || 'RH')}</option>`).join('')
+      || `<option value="${esc(op.tool || 1)}">T${esc(op.tool || 1)}</option>`;
+  }
+  function machOptions(cur) {
+    return Object.entries(O.MACH).map(([k, s]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${esc(s.label)}</option>`).join('');
+  }
+  function drawDecide(cv, ig, op) {
+    const g = cv.getContext('2d'); if (!g || !op) return;
+    const W = cv.width, H = cv.height;
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = '#f4f7fa'; g.fillRect(0, 0, W, H);
+    const out = O.contourPts(ig, 'out');
+    const inn = (ig.innerElems || []).length ? O.contourPts(ig, 'in') : [];
+    const area = op.area || { profile: 'out', from: 1, to: 1, dir: 'Zm' };
+    const prof = area.profile === 'in' && inn.length ? inn : out;
+    const D = Number(ig.od) || 60, Lg = Number(ig.ol) || 80;
+    const all = out.concat(inn);
+    const zs = all.map(p => p.z), rs = all.map(p => p.x / 2);
+    const zmin = Math.min(-Lg - 4, ...(zs.length ? zs : [0])) - 6;
+    const zmax = Math.max(10, ...(zs.length ? zs : [0])) + 8;
+    const rmax = Math.max(D / 2, ...(rs.length ? rs : [0])) + 10;
+    const sc = Math.min((W - 28) / (zmax - zmin), (H - 28) / (2 * rmax));
+    const X = z => 16 + (z - zmin) * sc;
+    const Y = r => H / 2 - r * sc;
+    g.fillStyle = '#e3e8ee';
+    g.fillRect(X(-Lg), Y(D / 2), Math.max(1, X(0) - X(-Lg)), Y(-D / 2) - Y(D / 2));
+    g.strokeStyle = '#90a4ae'; g.setLineDash([4, 3]);
+    g.strokeRect(X(-Lg), Y(D / 2), Math.max(1, X(0) - X(-Lg)), Y(-D / 2) - Y(D / 2));
+    g.setLineDash([6, 4]); g.beginPath(); g.moveTo(0, Y(0)); g.lineTo(W, Y(0)); g.stroke(); g.setLineDash([]);
+    const stroke = (pts, color, width) => {
+      if (!pts || pts.length < 2) return;
+      g.strokeStyle = color; g.lineWidth = width; g.lineJoin = 'round'; g.lineCap = 'round';
+      [1, -1].forEach(s => {
+        g.beginPath();
+        pts.forEach((p, i) => { const x = X(p.z), y = Y(s * p.x / 2); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+        g.stroke();
+      });
+    };
+    stroke(out, '#90a4ae', 1.6);
+    stroke(inn, '#b0bec5', 1.4);
+    const sel = O.areaPts(ig, area);
+    stroke(sel, '#e8750a', 6);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold 13px sans-serif';
+    const numbered = (pts, active) => {
+      const seen = {};
+      for (let i = 1; i < pts.length; i++) {
+        const el = pts[i].el; if (!el || seen[el]) continue; seen[el] = 1;
+        const a = pts[i - 1], b = pts[i];
+        const mx = (X(a.z) + X(b.z)) / 2, my = (Y(a.x / 2) + Y(b.x / 2)) / 2;
+        const on = active && el >= Number(area.from) && el <= Number(area.to);
+        g.beginPath(); g.fillStyle = on ? '#e8750a' : '#607d8b'; g.arc(mx, my, on ? 11 : 8, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#fff'; g.fillText(String(el), mx, my + 0.5);
+      }
+    };
+    if (area.profile === 'in') { numbered(out, false); numbered(inn, true); }
+    else { numbered(inn, false); numbered(out, true); }
+    if (sel.length >= 2) {
+      const a = sel[0], b = sel[sel.length - 1];
+      let x0 = X(a.z), y0 = Y(a.x / 2), x1 = X(b.z), y1 = Y(b.x / 2);
+      if (Math.hypot(x1 - x0, y1 - y0) < 8) {
+        const c = sel[sel.length - 2];
+        x0 = X(c.z); y0 = Y(c.x / 2);
+      }
+      const ang = Math.atan2(y1 - y0, x1 - x0);
+      const sx0 = x1 - 26 * Math.cos(ang), sy0 = y1 - 26 * Math.sin(ang);
+      g.strokeStyle = '#c62828'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(sx0, sy0); g.lineTo(x1, y1); g.stroke();
+      g.fillStyle = '#c62828';
+      g.beginPath();
+      g.moveTo(x1, y1);
+      g.lineTo(x1 - 16 * Math.cos(ang - 0.45), y1 - 16 * Math.sin(ang - 0.45));
+      g.lineTo(x1 - 16 * Math.cos(ang + 0.45), y1 - 16 * Math.sin(ang + 0.45));
+      g.closePath(); g.fill();
+    }
+    g.lineWidth = 1;
+    cv._lay = { X, Y, prof };
+  }
+  function syncPd(op) {
+    const card = document.querySelector(`.pdcard[data-id="${op.id}"]`);
+    if (!card) { renderIgf(); return; }
+    const lab = card.querySelector('[data-pdlab]');
+    if (lab) lab.textContent = O.machTitle(op) || '';
+    const dir = card.querySelector('[data-pdact="dir"]');
+    if (dir && op.area) dir.textContent = dirLabel(op.area.dir);
+    const from = card.querySelector('[data-pd="from"]');
+    const to = card.querySelector('[data-pd="to"]');
+    if (from && document.activeElement !== from && op.area) from.value = op.area.from;
+    if (to && document.activeElement !== to && op.area) to.value = op.area.to;
+    const warn = card.querySelector('[data-pdwarn]');
+    if (warn) warn.innerHTML = pdWarnHTML(op);
+    const cv = card.querySelector('canvas.pdcv');
+    if (cv) drawDecide(cv, igf(), op);
+    R = O.compile(P);
+  }
+  function onPdField(t) {
+    const op = P.ops.find(o => o.id === t.dataset.id);
+    if (!op) return;
+    if (t.dataset.pd === 'mach') {
+      const i = P.ops.indexOf(op);
+      const next = O.setMach(op, t.value, igf());
+      P.ops[i] = next;
+      pdFocus = next.id;
+      pdAnchor = null;
+      simDoneSig = null;
+      save();
+      renderIgf();
+      return;
+    }
+    if (t.dataset.pd === 'tool') {
+      const n = Number(t.value) || op.tool;
+      op.tool = n;
+      if (op.ftool != null && op.pass !== 'both') op.ftool = n;
+      simDoneSig = null;
+      save();
+      syncPd(op);
+      return;
+    }
+    if (t.dataset.pd === 'from' || t.dataset.pd === 'to') {
+      op.area = op.area || O.defaultArea(O.MACH[op.mach] || { dir: 'Zm' }, igf());
+      const list = op.area.profile === 'in' ? (igf().innerElems || []) : (igf().elems || []);
+      const max = Math.max(1, list.length);
+      const n = Math.max(1, Math.min(max, Math.round(Number(t.value) || 1)));
+      op.area[t.dataset.pd] = n;
+      if (op.area.from > op.area.to) {
+        const s = op.area.from;
+        op.area.from = op.area.to;
+        op.area.to = s;
+      }
+      O.applyArea(op, igf());
+      simDoneSig = null;
+      save();
+      syncPd(op);
+    }
+  }
+  function paintDecide() {
+    document.querySelectorAll('canvas.pdcv').forEach(cv => {
+      const op = P.ops.find(o => o.id === cv.dataset.id);
+      drawDecide(cv, igf(), op);
+      cv.onclick = onDecideClick;
+    });
+  }
+  function onDecideClick(ev) {
+    const cv = ev.currentTarget;
+    const op = P.ops.find(o => o.id === cv.dataset.id);
+    const lay = cv._lay;
+    if (!op || !lay || !lay.prof) return;
+    const rect = cv.getBoundingClientRect();
+    const px = (ev.clientX - rect.left) * cv.width / rect.width;
+    const py = (ev.clientY - rect.top) * cv.height / rect.height;
+    const dist = (x, y, x0, y0, x1, y1) => {
+      const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
+      let t = ((px - x0) * dx + (py - y0) * dy) / l2;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
+    };
+    let best = null, bd = 1e9;
+    for (let i = 1; i < lay.prof.length; i++) {
+      if (!lay.prof[i].el) continue;
+      const a = lay.prof[i - 1], b = lay.prof[i];
+      const d1 = dist(px, py, lay.X(a.z), lay.Y(a.x / 2), lay.X(b.z), lay.Y(b.x / 2));
+      const d2 = dist(px, py, lay.X(a.z), lay.Y(-a.x / 2), lay.X(b.z), lay.Y(-b.x / 2));
+      const d = Math.min(d1, d2);
+      if (d < bd) { bd = d; best = lay.prof[i].el; }
+    }
+    if (best == null || bd > 36) return;
+    if (!op.area) op.area = O.defaultArea(O.MACH[op.mach] || { dir: 'Zm' }, igf());
+    if (!pdAnchor || pdAnchor.id !== op.id) {
+      pdAnchor = { id: op.id, el: best };
+      op.area.from = best; op.area.to = best;
+    } else {
+      op.area.from = Math.min(pdAnchor.el, best);
+      op.area.to = Math.max(pdAnchor.el, best);
+      pdAnchor = null;
+    }
+    O.applyArea(op, igf());
+    simDoneSig = null;
+    save();
+    syncPd(op);
+  }
   function renderIgf() {
     const root = $('#igfRoot'); if (!root) return;
     if (window.OKU3D) {
@@ -1451,13 +1641,27 @@
         const d = applyIgf();
         if (d.ops && d.ops.length) { igfDidAuto = true; persistLib(); }
       }
+      if (!P.ops.some(o => o.id === pdFocus)) pdFocus = (P.ops.find(o => o.mach === 'finOd') || P.ops[0] || {}).id || null;
       const decided = O.decideProcesses(ig);
       const notes = decided.notes || [];
-      const rows = (P.ops || []).map((o, i) => {
-        const meta = O.OPS[o.type];
-        return `<li class="op"><b>${i + 1}. ${esc(meta ? meta.name : o.type)}</b><small>${esc(summary(o))}</small></li>`;
+      const cards = P.ops.map((op, i) => {
+        const meta = O.OPS[op.type] || { icon: '•', name: op.type };
+        const on = op.id === pdFocus;
+        const area = op.area || { from: 1, to: 1, dir: 'Zm' };
+        return `<article class="pdcard${on ? ' on' : ''}" data-id="${op.id}">
+          <div class="oph"><span class="opn">${i + 1}</span><div class="opt"><b>${meta.icon} ${esc(meta.name)}</b><small data-pdlab>${esc(O.machTitle(op) || summary(op))}</small></div></div>
+          <label class="fld"><span>Kiểu gia công (MACHINING TYPE)</span><select data-pd="mach" data-id="${op.id}">${machOptions(op.mach)}</select></label>
+          <label class="fld"><span>Dao (TOOL DATA)</span><select data-pd="tool" data-id="${op.id}">${toolOptions(op)}</select></label>
+          <div data-pdwarn>${pdWarnHTML(op)}</div>
+          ${on ? `<div class="grid2"><label class="fld"><span>Từ phần tử</span><input data-pd="from" data-id="${op.id}" type="number" min="1" step="1" value="${esc(area.from)}"></label>
+            <label class="fld"><span>Đến phần tử</span><input data-pd="to" data-id="${op.id}" type="number" min="1" step="1" value="${esc(area.to)}"></label></div>
+            <button type="button" class="b1" data-pdact="dir" data-id="${op.id}">${esc(dirLabel(area.dir))}</button>
+            <canvas class="pdcv" data-id="${op.id}" width="720" height="300"></canvas>
+            <p class="hint">Chạm một đoạn để chọn đầu, chạm đoạn khác để chọn cuối. Số trên nét là số phần tử. Mũi tên là hướng cắt.</p>` : ''}
+          <div class="opb"><button type="button" data-pdact="up" data-id="${op.id}" aria-label="Lên">↑</button><button type="button" data-pdact="dn" data-id="${op.id}" aria-label="Xuống">↓</button><button type="button" data-pdact="focus" data-id="${op.id}">Đường</button><button type="button" data-pdact="rm" data-id="${op.id}">Xóa</button></div>
+        </article>`;
       }).join('');
-      body += `<p class="hint">PROCESS DECIDE (LE32-239 P-39–44, F6 rồi F7 EXECUTE): máy chọn dao, thứ tự và chế độ cắt từ biên dạng, phôi, bảng dao và vật liệu. Bốn sổ: PRIORITY TOOL, FACE/LONG JUDGEMENT, INSIDE MACH DATA, SHAPE OUTPUT. Ứng dụng dùng một luật: X đơn điệu thì G85, không thì G86. Sửa danh sách ở bước sau.</p>
+      body += `<p class="hint">PROCESS DECIDE (LE32-238 mục 8, P-170): F7 EXECUTE đề xuất kiểu gia công, dao và vùng (cả biên dạng, hướng Z− về mâm). Sửa kiểu, dao, đoạn phần tử và hướng tại đây. FIN. OD chỉ cắt đúng các phần tử đã chọn, theo mũi tên.</p>
         <form id="igfForm" class="form" autocomplete="off">
         <label class="fld"><span>Mẫu quyết định (PATTERN)</span><select data-k="decidePattern">${DECIDE_PATTERNS.map(([v, l]) => `<option value="${v}" ${ig.decidePattern === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <h3>Chế độ cắt ${esc(ig.material)} (MATERIAL DATA, LE32-238 P-10)</h3>
@@ -1472,8 +1676,9 @@
         </div>
         <div class="btns"><button type="button" class="b1" id="igfRedecide">EXECUTE — quyết định</button></div>
         ${notes.map(n => `<p class="hint">⚠ ${esc(n)}</p>`).join('')}
-        <h3>Kết quả (${P.ops.length})</h3>
-        <ol class="ops">${rows || '<li class="empty">Chưa có nguyên công. Bấm EXECUTE sau khi có biên dạng.</li>'}</ol>
+        <h3>Nguyên công (${P.ops.length})</h3>
+        <div id="pdList">${cards || '<p class="empty">Chưa có nguyên công. Bấm EXECUTE sau khi có biên dạng.</p>'}</div>
+        <div class="btns pdadd"><select id="pdAddType">${machOptions('grooveOd')}</select><button type="button" class="b1" id="pdAdd">Thêm nguyên công</button></div>
         <p class="hint">CHUCKING ERROR và UNMACHINED ERROR trên máy vẫn tạo nguyên công rồi báo để sửa (LE32-239 P-42–44). Ứng dụng không kiểm hai lỗi hình học đó.</p>
         </form>`;
     } else if (igfStep === 5) {
@@ -1559,6 +1764,7 @@
         }).catch(er => alert('Lỗi: ' + er.message));
       };
     }
+    if (igfStep === 4) paintDecide();
     if (igfStep === 5) renderOps();
     paintColorInputs();
     paintPathControls();
@@ -1589,7 +1795,7 @@
           const tool = ig().tools[Number(card.dataset.ti)]; if (!tool) return;
           card.querySelectorAll('[data-tk]').forEach(inp => {
             const k = inp.dataset.tk;
-            if (k === 'kind' || k === 'role' || k === 'role2') tool[k] = inp.value;
+            if (k === 'kind' || k === 'role' || k === 'role2' || k === 'hand') tool[k] = inp.value;
             else tool[k] = inp.value === '' ? '' : Number(inp.value);
           });
         });
@@ -1602,6 +1808,7 @@
     };
     form.oninput = form.onchange = ev => {
       const t = ev.target;
+      if (t && t.dataset && t.dataset.pd) { onPdField(t); return; }
       if (t && t.id === 'fname') { t.dataset.touched = '1'; return; }
       if (t && t.id === 'igfFile') {
         ig().fileName = String(t.value || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 16);
@@ -1668,6 +1875,39 @@
     if (del) { igf().elems.splice(Number(del.dataset.del), 1); save(); renderIgf(); return; }
     const opb = e.target.closest && e.target.closest('#igfOps button[data-a]');
     if (opb) { actOp(opb.dataset.a, opb.closest('li.op').dataset.id); return; }
+    const pdAct = e.target.closest && e.target.closest('[data-pdact]');
+    if (pdAct) {
+      const op = P.ops.find(o => o.id === pdAct.dataset.id);
+      const i = op ? P.ops.indexOf(op) : -1;
+      const act = pdAct.dataset.pdact;
+      if (act === 'focus' && op) { pdFocus = op.id; renderIgf(); return; }
+      if (act === 'up' && i > 0) { [P.ops[i - 1], P.ops[i]] = [P.ops[i], P.ops[i - 1]]; save(); renderIgf(); return; }
+      if (act === 'dn' && i >= 0 && i < P.ops.length - 1) { [P.ops[i + 1], P.ops[i]] = [P.ops[i], P.ops[i + 1]]; save(); renderIgf(); return; }
+      if (act === 'rm' && i >= 0) {
+        if (!confirm('Xóa nguyên công này?')) return;
+        P.ops.splice(i, 1); simDoneSig = null; save(); renderIgf(); return;
+      }
+      if (act === 'dir' && op) {
+        op.area = op.area || O.defaultArea(O.MACH[op.mach] || { dir: 'Zm' }, igf());
+        op.area.dir = O.flipDir(op.area.dir);
+        O.applyArea(op, igf());
+        simDoneSig = null; save(); syncPd(op); return;
+      }
+    }
+    if (e.target.id === 'pdAdd') {
+      const machId = ($('#pdAddType') && $('#pdAddType').value) || 'grooveOd';
+      let op = O.setMach({ id: Math.random().toString(36).slice(2, 9), tool: 1, area: O.defaultArea(O.MACH[machId], igf()) }, machId, igf());
+      const tools = igf().tools || [];
+      const spec = O.MACH[machId];
+      const hit = tools.find(t => spec && (spec.roles.includes(t.role) || spec.roles.includes(t.role2)));
+      if (hit) { op.tool = Number(hit.t) || op.tool; if (op.ftool != null) op.ftool = op.tool; }
+      P.ops.push(op);
+      pdFocus = op.id;
+      simDoneSig = null;
+      save(); renderIgf(); return;
+    }
+    const card = e.target.closest && e.target.closest('.pdcard');
+    if (card && !e.target.closest('select,input,button,canvas')) { pdFocus = card.dataset.id; renderIgf(); return; }
     if (e.target.id === 'igfRedecide') {
       const d0 = O.decideProcesses(igf());
       if (!d0.ops.length) { alert('Chưa đủ biên dạng ở bước Biên dạng.'); return; }

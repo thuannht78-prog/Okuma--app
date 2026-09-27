@@ -321,7 +321,13 @@
         const xe = num(op.xEnd, -1.6), xs = op.xStart === '' || op.xStart == null ? stockD + 4 : num(op.xStart, stockD + 4);
         if (ctx.tail && xe < num(S.tailDia, 20)) needFree('khỏa mặt vào tới tâm');
         else if (ctx.tail) warn('warn', 'Khỏa mặt khi có chống tâm: chỉ tới X' + f(xe) + ' – kiểm tra va chạm với mũi tâm.');
-        toolStart(op.tool, 'KHOA MAT'); spindleG96(op.vc, op.dir);
+        const pass = op.pass || 'both';
+        toolStart(op.tool, machTitle(op) || 'KHOA MAT'); spindleG96(op.vc, op.dir);
+        if (pass === 'finish') {
+          push(`G00 X${f(xs)} Z2`, `G00 Z0`, `G01 X${f(xe)} F${f(op.ffeed || op.feed)}`, `G00 Z1`, `X${f(xs)}`);
+          toolEnd();
+          return;
+        }
         const zs = num(op.zStock, 1), doc = Math.max(0.05, num(op.doc, 1)), fin = Math.max(0, num(op.finish, 0));
         push(`G00 X${f(xs)} Z${f(zs + 2)}`);
         const levels = []; let z = zs - doc; while (z > fin + 1e-6) { levels.push(z); z -= doc; } levels.push(fin);
@@ -330,7 +336,7 @@
           const last = i === levels.length - 1 && fin === 0;
           push(`G00 Z${f(zl)}`, `G01 X${f(xe)} F${f(last ? num(op.ffeed, op.feed) : op.feed)}`, `G00 Z${f(zl + 1)}`, `X${f(xs)}`);
         });
-        if (fin > 0) push(`G00 Z0`, `G01 X${f(xe)} F${f(op.ffeed)}`, `G00 Z1`, `X${f(xs)}`);
+        if (fin > 0 && pass !== 'rough') push(`G00 Z0`, `G01 X${f(xe)} F${f(op.ffeed)}`, `G00 Z1`, `X${f(xs)}`);
         toolEnd();
       },
       od(op) { turnGen(op, false); },
@@ -349,7 +355,7 @@
         if (num(op.zs, 0) - num(op.ze, 0) <= 0) warn('err', 'Z bắt đầu phải lớn hơn Z kết thúc.');
         if (num(op.zs, 0) < 2 * P) warn('warn', 'Z bắt đầu nên cách mặt ren ≥ 2–3 lần bước để trục chính đồng bộ.');
         if (num(op.rpm, 0) * P > 3000) warn('warn', 'Tốc độ × bước lớn (tốc độ chạy dao > 3000 mm/ph) – kiểm tra giới hạn máy.');
-        toolStart(op.tool, `REN ${od ? 'NGOAI' : 'TRONG'} ${f(d)}X${f(P)}`);
+        toolStart(op.tool, machTitle(op) || ('REN ' + (od ? 'NGOAI' : 'TRONG') + ' ' + f(d) + 'X' + f(P)));
         push(`G97 S${f(op.rpm)} M03`); if (S.coolant) push('M08');
         push(`G00 X${f(xs)} Z${f(op.zs)}`);
         // LE33-021 P-167: M23 bật vát cuối ren, M22 tắt. P-175: M23 mà không có L thì L = 1 bước.
@@ -373,7 +379,7 @@
           const first = op.ref === 'L' ? Do : Di, last = op.ref === 'L' ? Di + 2 * tw : Do - 2 * tw;
           const xs = []; const stepD = 2 * tw * 0.8; const n = Math.max(1, Math.ceil(Math.abs(first - last) / stepD - 1e-9));
           for (let i = 0; i <= n; i++) xs.push(first + (last - first) * i / n);
-          toolStart(op.tool, 'RANH MAT DAU'); spindleG96(vc, 'M03');
+          toolStart(op.tool, machTitle(op) || 'RANH MAT DAU'); spindleG96(vc, 'M03');
           push(`G00 X${f(first)} Z${f(zf + 2)}`);
           if (op.cyc === 'cyc') {
             let l = `G74 X${f(last)} Z${f(zb)} I${f(stepD)}`; if (num(op.peck, 0) > 0) l += ` D${f(op.peck)}`;
@@ -387,7 +393,7 @@
         const first = op.ref === 'L' ? zr - tw : zr, last = op.ref === 'L' ? zr - w : zr - w + tw;
         const step = tw * 0.8, n = Math.max(0, Math.ceil(Math.abs(first - last) / step - 1e-9));
         const zs = []; for (let i = 0; i <= n; i++) zs.push(n ? first + (last - first) * i / n : first);
-        toolStart(op.tool, 'CAT RANH NGOAI'); spindleG96(vc, 'M03');
+        toolStart(op.tool, machTitle(op) || 'CAT RANH NGOAI'); spindleG96(vc, 'M03');
         push(`G00 X${f(dt + 4)} Z${f(first)}`);
         if (op.cyc === 'cyc') {
           // LE33-021 P-197: G73 K dịch Z, D/DP chiều sâu; hình 7-54 ghi D/2 nên D theo đường kính.
@@ -400,7 +406,7 @@
         needFree('cắt đứt (phôi sẽ bị kẹp giữa mâm và mũi tâm → gãy dao)');
         const d = op.dia === '' || op.dia == null ? stockD : num(op.dia, stockD);
         if (Math.abs(num(op.z, 0)) > num(S.stockL, 999)) warn('warn', 'Z cắt đứt vượt chiều dài phôi.');
-        toolStart(op.tool, 'CAT DUT');
+        toolStart(op.tool, machTitle(op) || 'CAT DUT');
         push(`G50 S${f(op.maxS)}`); spindleG96(op.vc, 'M03');
         push(`G00 X${f(d + 4)} Z${f(op.z)}`);
         if (String(op.catcher || '').trim()) push(asc(op.catcher));
@@ -413,7 +419,7 @@
         needFree(op.isCenter ? 'khoan tâm' : 'khoan lỗ tâm');
         const zb = num(op.zb, -5), zs = num(op.zs, 3);
         if (zb >= 0) warn('err', 'Z đáy lỗ phải âm.');
-        toolStart(op.tool, op.isCenter ? 'KHOAN TAM' : 'KHOAN LO D' + f(op.dia));
+        toolStart(op.tool, machTitle(op) || (op.isCenter ? 'KHOAN TAM' : 'KHOAN LO D' + f(op.dia)));
         push(`G97 S${f(op.rpm)} M03`); if (S.coolant) push('M08');
         push(`G00 X0 Z${f(zs)}`);
         // LE33-021 P-200/P-202: G74 — D là chiều sâu mỗi nhát theo Z; X và Z bắt buộc.
@@ -602,17 +608,21 @@
       const needExit = inner ? last.x > sx : last.x < sx;
       if (needExit || op.comp) def.push(`${op.comp ? 'G40 ' : ''}G01 X${f(sx)}`);
       def.push('G80');
-      const title = inner ? 'TIEN TRONG' : 'TIEN NGOAI';
+      const pass = op.pass || 'both';
+      const titled = machTitle(op);
+      const title = titled || (inner ? 'TIEN TRONG' : 'TIEN NGOAI');
       const same = Math.round(num(op.tool)) === Math.round(num(op.ftool));
-      if (op.mode !== 'none') {
-        toolStart(op.tool, title + ' THO ' + op.mode); spindleG96(op.vc, 'M03');
+      const finishOnly = pass === 'finish' || op.mode === 'none';
+      if (!finishOnly) {
+        toolStart(op.tool, titled ? title : title + ' THO ' + op.mode); spindleG96(op.vc, 'M03');
         push(`G00 X${f(sx)} Z${f(sz)}`, `${op.mode} ${nm} D${f(op.D)} F${f(op.F)} U${f(op.U)} W${f(op.W)}`, ...def);
+        if (pass === 'rough') { toolEnd(); return; }
         if (same) { push(`G96 S${f(op.vcf)}`, `G00 X${f(sx)} Z${f(sz)}`, `G87 ${nm}`); toolEnd(); return; }
         toolEnd();
-        toolStart(op.ftool, title + ' TINH G87'); spindleG96(op.vcf, 'M03');
+        toolStart(op.ftool, titled ? title : title + ' TINH G87'); spindleG96(op.vcf, 'M03');
         push(`G00 X${f(sx)} Z${f(sz)}`, `G87 ${nm}`); toolEnd();
       } else {
-        toolStart(op.ftool, title + ' TINH G87'); spindleG96(op.vcf, 'M03');
+        toolStart(op.ftool || op.tool, titled ? title : title + ' TINH G87'); spindleG96(op.vcf, 'M03');
         push(...def, `G00 X${f(sx)} Z${f(sz)}`, `G87 ${nm}`); toolEnd();
       }
     }
@@ -620,7 +630,10 @@
     ops.forEach((op, idx) => {
       ctx.curOp = op; ctx.idx = idx; const start = L.length;
       const meta = OPS[op.type]; if (!meta) return;
-      try { GEN[op.type](op); } catch (e) { warn('err', 'Lỗi tạo mã: ' + e.message); }
+      try {
+        if (project.igf && op.mach) toolCheck(project.igf, op).forEach(m => warn('warn', m));
+        GEN[op.type](op);
+      } catch (e) { warn('err', 'Lỗi tạo mã: ' + e.message); }
       map.push({ id: op.id, from: start, to: L.length });
     });
     ctx.curOp = null;
@@ -688,15 +701,20 @@
       if (op.useTail) engage();
       if (t === 'facing') {
         const xe = num(op.xEnd, -1.6), xs = op.xStart === '' || op.xStart == null ? stockD + 4 : num(op.xStart, stockD + 4);
-        if (tail && xe < num(S.tailDia, 20)) {
-          hit(i, op, 'faceTail', 'Khỏa mặt tới tâm (X' + f(xe) + ') trong khi chống tâm đang tiến.', 0, Math.max(0, xe) / 2);
+        if (tail && Math.min(xs, xe) < num(S.tailDia, 20)) {
+          hit(i, op, 'faceTail', 'Khỏa mặt tới tâm (X' + f(Math.min(xs, xe)) + ') trong khi chống tâm đang tiến.', 0, Math.max(0, Math.min(xs, xe)) / 2);
           if (S.autoRetract) release();
         }
+        const pass = op.pass || 'both';
+        home(i, op); go(i, op, 'rapid', 2, Math.max(xs, xe) / 2);
+        if (pass === 'finish') {
+          go(i, op, 'rapid', 0, xs / 2); go(i, op, 'feed', 0, xe / 2); go(i, op, 'rapid', 1, xs / 2);
+          home(i, op); return;
+        }
         const zs = num(op.zStock, 1), doc = Math.max(0.05, num(op.doc, 1)), fin = Math.max(0, num(op.finish, 0));
-        home(i, op); go(i, op, 'rapid', zs + 2, xs / 2);
         const levels = []; let zl = zs - doc; while (zl > fin + 1e-6) { levels.push(zl); zl -= doc; } levels.push(fin);
         levels.forEach(lv => { go(i, op, 'rapid', lv, xs / 2); go(i, op, 'feed', lv, xe / 2); go(i, op, 'rapid', lv + 1, xe / 2); go(i, op, 'rapid', lv + 1, xs / 2); });
-        if (fin > 0) { go(i, op, 'rapid', 0, xs / 2); go(i, op, 'feed', 0, xe / 2); go(i, op, 'rapid', 1, xs / 2); }
+        if (fin > 0 && pass !== 'rough') { go(i, op, 'rapid', 0, xs / 2); go(i, op, 'feed', 0, xe / 2); go(i, op, 'rapid', 1, xs / 2); }
         home(i, op); return;
       }
       if (t === 'od' || t === 'id') {
@@ -708,8 +726,10 @@
         const bore = num(op.bore, 10) / 2;
         const sx = (op.startX === '' || op.startX == null ? (inner ? num(op.bore, 10) - 1 : stockD + 2) : num(op.startX, 0)) / 2;
         const sz = num(op.startZ, 2);
+        const finishOnly = op.pass === 'finish' || op.mode === 'none';
+        const roughOnly = op.pass === 'rough';
         home(i, op); go(i, op, 'rapid', sz, Math.max(0.2, sx));
-        if (op.mode !== 'none') {
+        if (!finishOnly && op.mode !== 'none') {
           const step = Math.max(0.2, num(op.D, 2) / 2);
           const rs = poly.map(p => p.r);
           const lvls = [];
@@ -725,8 +745,10 @@
             go(i, op, 'rapid', sz, rr); go(i, op, 'feed', zEnd, rr); go(i, op, 'rapid', sz, rr);
           });
         }
-        go(i, op, 'rapid', sz, poly[0].r);
-        poly.forEach(p => go(i, op, 'feed', p.z, Math.max(0, p.r)));
+        if (!roughOnly) {
+          go(i, op, 'rapid', sz, poly[0].r);
+          poly.forEach(p => go(i, op, 'feed', p.z, Math.max(0, p.r)));
+        }
         go(i, op, 'rapid', sz, sx); home(i, op); return;
       }
       if (t === 'thread') {
@@ -788,7 +810,8 @@
       }
     });
     let finish = [];
-    const odOp = ops.find(o => o && o.on !== false && o.type === 'od' && o.pts && o.pts.length > 1);
+    const odOp = ops.find(o => o && o.on !== false && o.type === 'od' && (o.pass === 'finish' || o.mach === 'finOd') && o.pts && o.pts.length > 1)
+      || ops.find(o => o && o.on !== false && o.type === 'od' && o.pts && o.pts.length > 1);
     if (odOp) finish = profilePoly(odOp.pts.map(p => ({ x: num(p.x, 0), z: num(p.z, 0), t: p.t || 'L', r: p.r })));
     const fz = ops.find(o => o && o.on !== false && o.type === 'facing');
     return {
@@ -856,8 +879,8 @@
     if (!ig) return [];
     if (!Array.isArray(ig.tools) || !ig.tools.length) {
       ig.tools = [
-        { kind: 'single', angle: 80, edge: 5, role: 'ROUGH OD', role2: 'ROUGH FACE', t: num(ig.roughT, 1) || 1, offset: num(ig.roughT, 1) || 1 },
-        { kind: 'single', angle: 55, edge: 3, role: 'FINISH OD', role2: 'FINISH FACE', t: num(ig.finishT, 2) || 2, offset: num(ig.finishT, 2) || 2 }
+        { kind: 'single', angle: 80, edge: 5, role: 'ROUGH OD', role2: 'ROUGH FACE', hand: 'RH', t: num(ig.roughT, 1) || 1, offset: num(ig.roughT, 1) || 1 },
+        { kind: 'single', angle: 55, edge: 3, role: 'FINISH OD', role2: 'FINISH FACE', hand: 'RH', t: num(ig.finishT, 2) || 2, offset: num(ig.finishT, 2) || 2 }
       ];
     }
     const rough = ig.tools.find(t => t && (t.role === 'ROUGH OD' || t.role2 === 'ROUGH OD')) || ig.tools[0];
@@ -866,6 +889,7 @@
     if (fin && fin.t !== '' && fin.t != null) ig.finishT = Number(fin.t) || ig.finishT;
     const bore = ig.tools.find(t => t && (t.role === 'ROUGH ID' || t.role === 'FINISH ID'));
     if (bore && bore.t !== '' && bore.t != null) ig.boreT = Number(bore.t) || ig.boreT;
+    ig.tools.forEach(t => { if (t && !t.hand) t.hand = 'RH'; });
     return ig.tools;
   }
   function igfTutorial() {
@@ -915,11 +939,11 @@
   }
   function resolveElems(igf, elems, sx, sz) {
     const notes = [];
-    const raw = [{ z: num(sz, 0), r: num(sx, 0) / 2, arc: null }];
-    let pend = null;
-    elems.forEach(e => {
+    const raw = [{ z: num(sz, 0), r: num(sx, 0) / 2, arc: null, el: 0 }];
+    let pend = null, pendI = -1;
+    elems.forEach((e, i) => {
       if (!e || e.t === 'jump') return;
-      if (e.t === 'cchf' || e.t === 'rchf') { pend = e; return; }
+      if (e.t === 'cchf' || e.t === 'rchf') { pend = e; pendI = i; return; }
       const cur = raw[raw.length - 1];
       let nz = cur.z, nr = cur.r, arc = null;
       if (e.t === 'face') { nr = num(e.x, cur.r * 2) / 2; if (e.z !== '' && e.z != null) nz = num(e.z, cur.z); }
@@ -941,15 +965,15 @@
         const cut = cornerCut(raw[raw.length - 2], cur, { z: nz, r: nr }, pend.t === 'rchf' ? 'r' : 'c', pend.t === 'rchf' ? pend.r : pend.c);
         if (cut) {
           raw.pop();
-          raw.push({ z: cut.a.z, r: cut.a.r, arc: null });
-          raw.push({ z: cut.b.z, r: cut.b.r, arc: cut.r ? { t: cut.cw ? 'CW' : 'CCW', r: cut.r } : null });
+          raw.push({ z: cut.a.z, r: cut.a.r, arc: null, el: pendI + 1 });
+          raw.push({ z: cut.b.z, r: cut.b.r, arc: cut.r ? { t: cut.cw ? 'CW' : 'CCW', r: cut.r } : null, el: pendI + 1 });
         } else notes.push(pend.t === 'rchf' ? 'Bo tròn (R-CHF) không đặt được — cạnh quá ngắn.' : 'Vát (C-CHF) không đặt được — cạnh quá ngắn.');
         pend = null;
       } else if (pend) { notes.push('Vát/bo không đứng đầu biên dạng (IGF: không nối với điểm đầu).'); pend = null; }
-      raw.push({ z: nz, r: nr, arc });
+      raw.push({ z: nz, r: nr, arc, el: i + 1 });
     });
     if (pend) notes.push('Vát/bo cuối biên dạng chưa có đoạn kế tiếp.');
-    const pts = raw.map((p, i) => ({ x: Math.round(p.r * 2 * 1000) / 1000, z: Math.round(p.z * 1000) / 1000, t: i && p.arc ? p.arc.t : 'L', r: i && p.arc ? p.arc.r : '' }));
+    const pts = raw.map((p, i) => ({ x: Math.round(p.r * 2 * 1000) / 1000, z: Math.round(p.z * 1000) / 1000, t: i && p.arc ? p.arc.t : 'L', r: i && p.arc ? p.arc.r : '', el: p.el || 0 }));
     return { pts, notes };
   }
   function shapePreview(igf) {
@@ -965,6 +989,239 @@
     }
     return true;
   }
+
+  // Kiểu gia công IGF (LE32-238 P-177): tên = giai đoạn + vùng + hướng.
+  // ← / Z− cắt về mâm (Z giảm). → / Z+ ra khỏi mâm. ↓ / X− về tâm. ↑ / X+ ra ngoài.
+  const MACH = {
+    roughOd: { op: 'od', pass: 'rough', axis: 'Z', dir: 'Zm', nc: 'ROUGH OD', label: 'ROUGH OD — tiện ngoài thô', roles: ['ROUGH OD'] },
+    finOd: { op: 'od', pass: 'finish', axis: 'Z', dir: 'Zm', nc: 'FIN. OD', label: 'FIN. OD — tiện ngoài tinh', roles: ['FINISH OD'] },
+    roughFace: { op: 'facing', pass: 'rough', axis: 'X', dir: 'Xm', nc: 'ROUGH O. FACE', label: 'ROUGH O. FACE — khỏa thô', roles: ['ROUGH FACE', 'ROUGH OD'] },
+    finFace: { op: 'facing', pass: 'finish', axis: 'X', dir: 'Xm', nc: 'FIN. O. FACE', label: 'FIN. O. FACE — khỏa tinh', roles: ['FINISH FACE', 'FINISH OD'] },
+    roughId: { op: 'id', pass: 'rough', axis: 'Z', dir: 'Zm', nc: 'ROUGH ID', label: 'ROUGH ID — tiện trong thô', roles: ['ROUGH ID'] },
+    finId: { op: 'id', pass: 'finish', axis: 'Z', dir: 'Zm', nc: 'FIN. ID', label: 'FIN. ID — tiện trong tinh', roles: ['FINISH ID', 'ROUGH ID'] },
+    grooveOd: { op: 'groove', pass: 'both', axis: 'X', dir: 'Xm', nc: 'GROOVE OD', label: 'GROOVE OD — cắt rãnh ngoài', roles: ['GROOVE'], gt: 'od' },
+    grooveId: { op: 'groove', pass: 'both', axis: 'X', dir: 'Xp', nc: 'GROOVE ID', label: 'GROOVE ID — cắt rãnh trong', roles: ['GROOVE'], gt: 'od' },
+    grooveFace: { op: 'groove', pass: 'both', axis: 'Z', dir: 'Zm', nc: 'GROOVE FACE', label: 'GROOVE FACE — rãnh mặt đầu', roles: ['GROOVE'], gt: 'face' },
+    threadOd: { op: 'thread', pass: 'both', axis: 'Z', dir: 'Zm', nc: 'THREAD OD', label: 'THREAD OD — ren ngoài', roles: ['THREAD'], side: 'OD' },
+    threadId: { op: 'thread', pass: 'both', axis: 'Z', dir: 'Zm', nc: 'THREAD ID', label: 'THREAD ID — ren trong', roles: ['THREAD'], side: 'ID' },
+    drillCenter: { op: 'drill', pass: 'both', axis: 'Z', dir: 'Zm', nc: 'DRILL CENTER', label: 'DRILL CENTER — khoan tâm', roles: ['CENTER', 'DRILL'] },
+    drillBlind: { op: 'drill', pass: 'both', axis: 'Z', dir: 'Zm', nc: 'DRILL BLIND', label: 'DRILL BLIND — khoan', roles: ['DRILL', 'CENTER'] },
+    cutoff: { op: 'cutoff', pass: 'both', axis: 'X', dir: 'Xm', nc: 'CUTOFF', label: 'CUTOFF — cắt đứt', roles: ['CUTOFF'] },
+    mDrillFace: { op: 'lface', pass: 'both', axis: 'Z', dir: 'Zm', nc: 'M DRILL FACE', label: 'M DRILL — khoan mặt (dao động lực)', roles: ['LIVE', 'DRILL'] },
+    mDrillSide: { op: 'lside', pass: 'both', axis: 'X', dir: 'Xm', nc: 'M DRILL SIDE', label: 'M DRILL — khoan ngang (dao động lực)', roles: ['LIVE', 'DRILL'] }
+  };
+  const DIR_NC = { Zm: 'Z-', Zp: 'Z+', Xm: 'X-', Xp: 'X+' };
+  function flipDir(dir) { return { Zm: 'Zp', Zp: 'Zm', Xm: 'Xp', Xp: 'Xm' }[dir] || 'Zp'; }
+  function machTitle(op) {
+    const spec = MACH[op && op.mach];
+    if (!spec) return '';
+    const a = op.area || {};
+    const range = a.from ? (Number(a.from) === Number(a.to) ? 'E' + a.from : 'E' + a.from + '-E' + a.to) : '';
+    return [spec.nc, DIR_NC[a.dir] || '', range].filter(Boolean).join(' ');
+  }
+  function pickTool(ig, roles, fallback) {
+    const tools = (ig && ig.tools) || [];
+    const hit = tools.find(t => t && (roles.includes(t.role) || roles.includes(t.role2)) && t.t !== '' && t.t != null);
+    return hit ? (Number(hit.t) || fallback) : fallback;
+  }
+  function contourShift(igf) {
+    const g = Object.assign({}, DEFAULT_IGF, igf || {});
+    const sh = resolveElems(g, g.elems || [], g.sx, g.sz);
+    if (!sh.pts.length) return 0;
+    const zMax = Math.max.apply(null, sh.pts.map(p => toGenZ(p.z, g)));
+    return (zMax < -1e-6 || zMax > 1e-6) ? zMax : 0;
+  }
+  function contourPts(igf, profile) {
+    const g = Object.assign({}, DEFAULT_IGF, igf || {});
+    const inn = profile === 'in';
+    const elems = inn ? (g.innerElems || []) : (g.elems || []);
+    const sh = resolveElems(g, elems, inn ? g.inSx : g.sx, inn ? g.inSz : g.sz);
+    const shift = contourShift(g);
+    return sh.pts.map(p => ({
+      x: p.x, z: Math.round((toGenZ(p.z, g) - shift) * 1000) / 1000,
+      t: p.t || 'L', r: p.r || '', el: p.el || 0
+    }));
+  }
+  function reversePts(pts) {
+    const n = pts.length;
+    const out = [];
+    for (let i = n - 1; i >= 0; i--) out.push({ x: pts[i].x, z: pts[i].z, t: 'L', r: '', el: pts[i].el || 0 });
+    for (let i = 1; i < n; i++) {
+      if (pts[i].t && pts[i].t !== 'L' && pts[i].r) {
+        out[n - i].t = pts[i].t === 'CW' ? 'CCW' : 'CW';
+        out[n - i].r = pts[i].r;
+      }
+    }
+    return out;
+  }
+  function orientPts(pts, dir) {
+    if (!pts || pts.length < 2) return (pts || []).map(p => Object.assign({}, p));
+    const a = pts[0], b = pts[pts.length - 1];
+    const ok = dir === 'Zp' ? b.z >= a.z - 1e-6 : dir === 'Xm' ? b.x <= a.x + 1e-6 : dir === 'Xp' ? b.x >= a.x - 1e-6 : b.z <= a.z + 1e-6;
+    return ok ? pts.map(p => Object.assign({}, p)) : reversePts(pts);
+  }
+  function sliceTagged(pts, from, to) {
+    from = Math.max(1, Math.round(Number(from) || 1));
+    to = Math.max(from, Math.round(Number(to) || from));
+    if (!pts || pts.length < 2) return (pts || []).map(p => Object.assign({}, p));
+    let i0 = -1, i1 = -1;
+    for (let i = 1; i < pts.length; i++) {
+      const el = pts[i].el || 0;
+      if (el >= from && el <= to) { if (i0 < 0) i0 = i - 1; i1 = i; }
+      else if (i0 >= 0 && el > to) break;
+    }
+    if (i0 < 0) return [];
+    return pts.slice(i0, i1 + 1).map(p => Object.assign({}, p));
+  }
+  function areaPts(igf, area) {
+    const prof = area && area.profile === 'in' ? 'in' : 'out';
+    const all = contourPts(igf, prof);
+    const cut = sliceTagged(all, area && area.from, area && area.to);
+    return orientPts(cut, area && area.dir);
+  }
+  function defaultArea(spec, igf) {
+    const wantIn = spec && (spec.op === 'id' || spec.side === 'ID');
+    const list = wantIn ? ((igf && igf.innerElems) || []) : ((igf && igf.elems) || []);
+    const n = Math.max(1, list.length);
+    return { profile: wantIn && list.length ? 'in' : 'out', from: 1, to: n, dir: (spec && spec.dir) || 'Zm' };
+  }
+  function fillGroove(op, pts, igf) {
+    const spec = MACH[op.mach] || {};
+    const zs = pts.map(p => p.z), xs = pts.map(p => p.x);
+    const z0 = Math.min.apply(null, zs), z1 = Math.max.apply(null, zs);
+    const x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    op.gt = spec.gt || 'od';
+    const tw = num(op.tw, 3);
+    if (op.gt === 'face') {
+      op.d1 = x1; op.d2 = x0; op.zr = z1;
+      op.w = Math.max(tw, Math.round((z1 - z0) * 1000) / 1000 || tw);
+      if (op.d1 - op.d2 < tw) op.d2 = op.d1 - tw - 0.5;
+    } else {
+      const stock = num(igf && igf.od, x1);
+      op.d1 = Math.max(stock, x1);
+      op.d2 = Math.min(x0, x1);
+      if (op.d2 >= op.d1 - 0.2) op.d2 = Math.round((op.d1 - Math.max(1, tw)) * 1000) / 1000;
+      op.zr = z1;
+      op.w = Math.max(tw, Math.round(Math.abs(z1 - z0) * 1000) / 1000 || tw);
+      op.cyc = 'g01';
+    }
+  }
+  function fillThread(op, pts) {
+    const spec = MACH[op.mach] || {};
+    op.side = spec.side || op.side || 'OD';
+    const zs = pts.map(p => p.z), xs = pts.map(p => p.x);
+    const zHi = Math.max.apply(null, zs), zLo = Math.min.apply(null, zs);
+    op.dia = Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 1000) / 1000;
+    const lead = Math.max(3, num(op.P, 1.5) * 2);
+    if (op.area && op.area.dir === 'Zp') { op.zs = zLo; op.ze = zHi; }
+    else { op.zs = Math.round((zHi + lead) * 1000) / 1000; op.ze = zLo; }
+  }
+  function applyArea(op, igf) {
+    if (!op || !op.area) return op;
+    const spec = MACH[op.mach];
+    const pts = areaPts(igf, op.area);
+    if (pts.length < 2) return op;
+    if (op.type === 'od' || op.type === 'id') {
+      op.pts = pts.map(p => ({ x: p.x, z: p.z, t: p.t || 'L', r: p.r || '' }));
+      const inner = op.type === 'id';
+      if (op.pass === 'finish') op.mode = 'none';
+      else op.mode = monotonicX(op.pts, inner) ? 'G85' : 'G86';
+      if (inner) {
+        const xs = op.pts.map(p => p.x);
+        if (!(num(op.bore, 0) > 0)) op.bore = Math.min.apply(null, xs);
+      }
+    } else if (op.type === 'facing') {
+      const xs = pts.map(p => p.x);
+      if (op.area.dir === 'Xp') { op.xStart = Math.min.apply(null, xs); op.xEnd = Math.max.apply(null, xs); }
+      else { op.xStart = Math.max.apply(null, xs); op.xEnd = Math.min.apply(null, xs) - 1; }
+      if (op.pass === 'finish') { op.zStock = 0; op.finish = 0; }
+    } else if (op.type === 'groove') fillGroove(op, pts, igf);
+    else if (op.type === 'thread') fillThread(op, pts);
+    else if (op.type === 'cutoff' && pts.length) {
+      op.z = Math.min.apply(null, pts.map(p => p.z));
+      op.dia = Math.max.apply(null, pts.map(p => p.x));
+    } else if (op.type === 'drill' && pts.length) {
+      op.zb = Math.min.apply(null, pts.map(p => p.z));
+      if (op.zb >= 0) op.zb = -Math.abs(op.zb || 6);
+    }
+    return op;
+  }
+  function setMach(op, machId, igf) {
+    const spec = MACH[machId];
+    if (!spec) return op;
+    const fresh = newOp(spec.op);
+    fresh.id = op.id || fresh.id;
+    fresh.mach = machId;
+    fresh.pass = spec.pass;
+    fresh.area = Object.assign({}, op.area || defaultArea(spec, igf));
+    if (spec.axis === 'Z' && (fresh.area.dir === 'Xm' || fresh.area.dir === 'Xp')) fresh.area.dir = spec.dir;
+    if (spec.axis === 'X' && (fresh.area.dir === 'Zm' || fresh.area.dir === 'Zp')) fresh.area.dir = spec.dir;
+    if (spec.gt) fresh.gt = spec.gt;
+    if (spec.side) fresh.side = spec.side;
+    if (op.tool) { fresh.tool = op.tool; if (fresh.ftool != null) fresh.ftool = op.tool; }
+    const M = matOf(igf || {});
+    if (fresh.vc != null) fresh.vc = spec.pass === 'finish' ? M.vf : M.vr;
+    if (fresh.vcf != null) fresh.vcf = M.vf;
+    if (fresh.feed != null) fresh.feed = spec.pass === 'finish' ? M.ff : M.fr;
+    if (fresh.ffeed != null) fresh.ffeed = M.ff;
+    if (fresh.F != null) fresh.F = M.fr;
+    if (fresh.ff != null) fresh.ff = M.ff;
+    if (fresh.D != null) fresh.D = M.dx;
+    if (fresh.U != null) fresh.U = Math.round(num(M.lx, 0.2) * 2 * 1000) / 1000;
+    if (fresh.W != null) fresh.W = M.lz;
+    if (spec.op === 'drill') fresh.isCenter = machId === 'drillCenter';
+    applyArea(fresh, igf || {});
+    return fresh;
+  }
+  function toolCheck(igf, op) {
+    const notes = [];
+    if (!op || !op.mach) return notes;
+    const spec = MACH[op.mach];
+    const tools = (igf && igf.tools) || [];
+    const t = tools.find(x => x && Number(x.t) === Number(op.tool));
+    if (!t) { notes.push('Chưa có dao TOOL DATA khớp số T của nguyên công.'); return notes; }
+    const roles = [t.role, t.role2].filter(Boolean);
+    if (spec && spec.roles.length && !spec.roles.some(r => roles.includes(r))) notes.push('PROCESS KIND ' + (t.role || '') + ' không khớp kiểu ' + spec.nc + '.');
+    const hand = t.hand || 'RH';
+    const dir = op.area && op.area.dir;
+    if (dir === 'Zm' && hand === 'LH') notes.push('Dao tay trái (LH) cắt Z+ ra khỏi mâm; hướng đang là Z− về mâm.');
+    if (dir === 'Zp' && hand === 'RH') notes.push('Dao tay phải (RH) cắt Z− về mâm; hướng đang là Z+ ra khỏi mâm.');
+    if (spec && spec.axis === 'X' && dir === 'Xp' && hand === 'RH') notes.push('Dao tay phải (RH) thường cắt X− về tâm; hướng đang là X+ ra ngoài.');
+    if (spec && spec.axis === 'X' && dir === 'Xm' && hand === 'LH') notes.push('Dao tay trái (LH) thường cắt X+ ra ngoài; hướng đang là X− về tâm.');
+    return notes;
+  }
+  function migrateDecide(project) {
+    if (!project) return project;
+    const ig = project.igf || {};
+    const nOut = Math.max(1, (ig.elems || []).length);
+    const nIn = Math.max(1, (ig.innerElems || []).length);
+    (project.ops || []).forEach(op => {
+      if (!op || op.area) return;
+      if (op.type === 'od') op.area = { profile: 'out', from: 1, to: nOut, dir: 'Zm' };
+      else if (op.type === 'id') op.area = { profile: 'in', from: 1, to: nIn, dir: 'Zm' };
+      else if (op.type === 'facing') op.area = { profile: 'out', from: 1, to: Math.min(1, nOut) || 1, dir: 'Xm' };
+      else if (op.type === 'groove') op.area = { profile: 'out', from: 1, to: 1, dir: op.gt === 'face' ? 'Zm' : 'Xm' };
+      else if (op.type === 'thread') op.area = { profile: op.side === 'ID' ? 'in' : 'out', from: 1, to: op.side === 'ID' ? nIn : nOut, dir: 'Zm' };
+      else if (op.type === 'cutoff') op.area = { profile: 'out', from: nOut, to: nOut, dir: 'Xm' };
+      else if (op.type === 'drill') op.area = { profile: 'out', from: 1, to: 1, dir: 'Zm' };
+      else if (op.type === 'lface') op.area = { profile: 'out', from: 1, to: 1, dir: 'Zm' };
+      else if (op.type === 'lside') op.area = { profile: 'out', from: 1, to: 1, dir: 'Xm' };
+      if (!op.mach) {
+        if (op.type === 'od') op.mach = op.mode === 'none' ? 'finOd' : 'roughOd';
+        else if (op.type === 'id') op.mach = op.mode === 'none' ? 'finId' : 'roughId';
+        else if (op.type === 'facing') op.mach = 'roughFace';
+        else if (op.type === 'groove') op.mach = op.gt === 'face' ? 'grooveFace' : 'grooveOd';
+        else if (op.type === 'thread') op.mach = op.side === 'ID' ? 'threadId' : 'threadOd';
+        else if (op.type === 'drill') op.mach = op.isCenter ? 'drillCenter' : 'drillBlind';
+        else if (op.type === 'cutoff') op.mach = 'cutoff';
+        else if (op.type === 'lface') op.mach = 'mDrillFace';
+        else if (op.type === 'lside') op.mach = 'mDrillSide';
+      }
+      if ((op.type === 'od' || op.type === 'id') && !op.pass) op.pass = op.mode === 'none' ? 'finish' : 'both';
+      if (op.type === 'facing' && !op.pass) op.pass = 'both';
+    });
+    return project;
+  }
   function decideProcesses(igf) {
     const g = Object.assign({}, DEFAULT_IGF, igf || {});
     ensureTools(g);
@@ -976,17 +1233,30 @@
       notes.push('Mẫu PROCESS DECIDE đã lưu. Ứng dụng vẫn chọn G85 khi X đơn điệu và G86 khi không. Bốn sổ quy tắc IGF không được mô phỏng.');
     }
     const innerElems = Array.isArray(g.innerElems) ? g.innerElems : [];
-    if (sh.pts.length < 2 && innerElems.length < 1) return { ops: [], notes: notes.concat(['Biên dạng (TURNING SHAPE) cần ít nhất một đoạn sau điểm đầu.']), preview: [] };
-    let pts = sh.pts.map(p => ({ x: p.x, z: toGenZ(p.z, g), t: p.t, r: p.r }));
-    const zMax = pts.length ? Math.max(...pts.map(p => p.z)) : 0;
-    const shift = (zMax < -1e-6 || zMax > 1e-6) ? zMax : 0;
-    if (shift) pts = pts.map(p => ({ x: p.x, z: Math.round((p.z - shift) * 1000) / 1000, t: p.t, r: p.r }));
-    const faceStock = Math.max(0, Math.round((-zMax) * 1000) / 1000);
+    const pts = contourPts(g, 'out');
+    const shift = contourShift(g);
+    const faceStock = Math.max(0, Math.round((-shift) * 1000) / 1000);
+    if (pts.length < 2 && innerElems.length < 1) return { ops: [], notes: notes.concat(['Biên dạng (TURNING SHAPE) cần ít nhất một đoạn sau điểm đầu.']), preview: [] };
     const ops = [];
     const add = (type, patch) => { const o = newOp(type); Object.assign(o, patch); ops.push(o); };
-    if (pts.length >= 2 && faceStock > 0.02) add('facing', { tool: g.roughT, vc: M.vr, feed: M.fr, ffeed: M.ff, zStock: faceStock, doc: Math.max(0.5, M.dx / 2), finish: Math.min(0.2, faceStock), xEnd: Math.min(0, pts[0].x) - 1 });
+    const nOut = Math.max(1, (g.elems || []).length);
+    const nIn = Math.max(1, (g.innerElems || []).length);
+    const areaOut = { profile: 'out', from: 1, to: nOut, dir: 'Zm' };
+    const areaFace = { profile: 'out', from: 1, to: 1, dir: 'Xm' };
+    if (pts.length >= 2 && faceStock > 0.02) {
+      add('facing', {
+        mach: 'roughFace', pass: 'rough', area: Object.assign({}, areaFace),
+        tool: pickTool(g, ['ROUGH FACE', 'ROUGH OD'], g.roughT), vc: M.vr, feed: M.fr, ffeed: M.ff,
+        zStock: faceStock, doc: Math.max(0.5, M.dx / 2), finish: Math.min(0.2, faceStock), xEnd: Math.min(0, pts[0].x) - 1
+      });
+      add('facing', {
+        mach: 'finFace', pass: 'finish', area: Object.assign({}, areaFace),
+        tool: pickTool(g, ['FINISH FACE', 'FINISH OD'], g.finishT), vc: M.vf, feed: M.ff, ffeed: M.ff,
+        zStock: 0, doc: 0.2, finish: 0, xEnd: Math.min(0, pts[0].x) - 1
+      });
+    }
     if (g.useCenter) {
-      add('drill', { tool: 5, isCenter: true, dia: num(g.tailD, 20) > 8 ? 5 : 4, zs: 3, zb: -6, rpm: 1000, feed: 0.08, peck: 0 });
+      add('drill', { mach: 'drillCenter', pass: 'both', area: { profile: 'out', from: 1, to: 1, dir: 'Zm' }, tool: pickTool(g, ['CENTER', 'DRILL'], 5), isCenter: true, dia: num(g.tailD, 20) > 8 ? 5 : 4, zs: 3, zb: -6, rpm: 1000, feed: 0.08, peck: 0 });
       add('tailOn', { note: 'USE CENTER' });
     }
     const U = Math.round(num(M.lx, 0.2) * 2 * 1000) / 1000;
@@ -994,39 +1264,79 @@
     if (pts.length >= 2) {
       mode = monotonicX(pts, false) ? 'G85' : 'G86';
       if (mode === 'G86') notes.push('Biên dạng không đơn điệu theo X — PROCESS DECIDE chọn chu trình chép hình G86 (COPYING).');
+      const cut = pts.map(p => ({ x: p.x, z: p.z, t: p.t, r: p.r }));
       add('od', {
-        tool: g.roughT, ftool: g.finishT, mode, vc: M.vr, vcf: M.vf,
+        mach: 'roughOd', pass: 'rough', area: Object.assign({}, areaOut),
+        tool: pickTool(g, ['ROUGH OD'], g.roughT), ftool: pickTool(g, ['ROUGH OD'], g.roughT), mode, vc: M.vr, vcf: M.vf,
         D: M.dx, F: M.fr, U, W: M.lz, ff: M.ff, comp: true,
-        startZ: Math.max(2, faceStock + 1), startX: '', useTail: !!g.useCenter, pts
+        startZ: Math.max(2, faceStock + 1), startX: '', useTail: !!g.useCenter, pts: cut
+      });
+      add('od', {
+        mach: 'finOd', pass: 'finish', area: Object.assign({}, areaOut),
+        tool: pickTool(g, ['FINISH OD'], g.finishT), ftool: pickTool(g, ['FINISH OD'], g.finishT), mode: 'none', vc: M.vf, vcf: M.vf,
+        D: M.dx, F: M.fr, U, W: M.lz, ff: M.ff, comp: true,
+        startZ: Math.max(2, faceStock + 1), startX: '', useTail: !!g.useCenter, pts: cut.map(p => Object.assign({}, p))
       });
     }
     if (innerElems.length) {
       const inn = resolveElems(g, innerElems, g.inSx, g.inSz);
       notes.push.apply(notes, inn.notes.map(n => '[LỖ TRONG] ' + n));
-      let ipts = inn.pts.map(p => ({ x: p.x, z: Math.round((toGenZ(p.z, g) - shift) * 1000) / 1000, t: p.t, r: p.r }));
+      const ipts = contourPts(g, 'in');
       if (ipts.length >= 2) {
         const modeI = monotonicX(ipts, true) ? 'G85' : 'G86';
         if (modeI === 'G86') notes.push('Biên dạng lỗ không đơn điệu theo X — tiện trong dùng G86.');
         const bore = num(g.id, 0) > 0 ? num(g.id, 0) : Math.min.apply(null, ipts.map(p => p.x));
+        const cutI = ipts.map(p => ({ x: p.x, z: p.z, t: p.t, r: p.r }));
+        const areaIn = { profile: 'in', from: 1, to: nIn, dir: 'Zm' };
+        const boreT = pickTool(g, ['ROUGH ID'], g.boreT);
+        const boreF = pickTool(g, ['FINISH ID', 'ROUGH ID'], g.boreT);
         add('id', {
-          tool: g.boreT, ftool: g.boreT, mode: modeI, bore,
+          mach: 'roughId', pass: 'rough', area: areaIn,
+          tool: boreT, ftool: boreT, mode: modeI, bore,
           vc: M.vr, vcf: M.vf, D: Math.max(1, M.dx * 0.8), F: M.fr, U, W: M.lz, ff: M.ff, comp: true,
-          startZ: 2, startX: '', useTail: false, pts: ipts
+          startZ: 2, startX: '', useTail: false, pts: cutI
+        });
+        add('id', {
+          mach: 'finId', pass: 'finish', area: Object.assign({}, areaIn),
+          tool: boreF, ftool: boreF, mode: 'none', bore,
+          vc: M.vf, vcf: M.vf, D: Math.max(1, M.dx * 0.8), F: M.fr, U, W: M.lz, ff: M.ff, comp: true,
+          startZ: 2, startX: '', useTail: false, pts: cutI.map(p => Object.assign({}, p))
         });
       }
     }
     const mills = Array.isArray(g.mills) ? g.mills : [];
     if (mills.length) {
-      notes.push('Studio có ' + mills.length + ' phần tử phay (lỗ, rãnh, pocket, vát). Chúng được ghi chú trong chương trình; chu trình dao động lực thêm ở PROCESS EDIT.');
-      const line = mills.map(m => String(m.type || 'MILL')).join(' ');
+      notes.push('Studio có ' + mills.length + ' phần tử phay. Lỗ có đủ số liệu được đề xuất M DRILL; phần còn lại ghi chú để thêm dao động lực.');
+      const line = mills.map(m => String(m.type || m.kind || 'MILL')).join(' ');
       add('raw', { code: '(STUDIO MILL ' + line + ')' });
+      const liveT = pickTool(g, ['LIVE', 'DRILL'], 8);
+      mills.forEach(m => {
+        const kind = String(m.kind || m.type || '');
+        const axial = /HOLEF|POCKET|SLOT|^F$/i.test(kind) || m.kind === 'F' || m.kind === 'P' || m.kind === 'R';
+        const cross = m.kind === 'C' || /CROSS|SIDE/i.test(kind);
+        if (cross && (m.z != null || m.zb != null)) {
+          add('lside', {
+            mach: 'mDrillSide', pass: 'both', area: { profile: 'out', from: 1, to: 1, dir: 'Xm' },
+            tool: liveT, zs: String(m.z != null ? m.z : m.zb), n: m.n || 1, depth: num(m.d, 8), dia: g.od
+          });
+        } else if (axial && (m.n || m.d || m.pc)) {
+          add('lface', {
+            mach: 'mDrillFace', pass: 'both', area: { profile: 'out', from: 1, to: 1, dir: 'Zm' },
+            tool: liveT, pos: 'pcd', pcd: num(m.pc, num(m.d, 0)), n: m.n || 1, depth: num(m.zb, num(m.d, 10))
+          });
+        }
+      });
     }
     if (g.blankId === 'thru' || g.blankId === 'blind') {
       const bore = num(g.id, 0);
       const depth = g.blankId === 'blind' ? Math.min(num(g.ol, 10), num(g.idDepth, num(g.ol, 10))) : Math.min(num(g.ol, 10), num(g.ol, 10) - 5);
       if (bore > 0) {
         if (g.useCenter) add('tailOff', { note: 'TRUOC KHOAN LO' });
-        add('drill', { tool: 6, isCenter: false, dia: bore, zs: 3, zb: -Math.abs(depth), rpm: Math.round(Math.min(1500, 1000 * M.vr / Math.max(bore, 8))), feed: Math.min(0.2, M.fr), peck: Math.max(3, bore) });
+        add('drill', {
+          mach: 'drillBlind', pass: 'both', area: { profile: 'out', from: 1, to: 1, dir: 'Zm' },
+          tool: pickTool(g, ['DRILL'], 6), isCenter: false, dia: bore, zs: 3, zb: -Math.abs(depth),
+          rpm: Math.round(Math.min(1500, 1000 * M.vr / Math.max(bore, 8))), feed: Math.min(0.2, M.fr), peck: Math.max(3, bore)
+        });
         notes.push('Phôi có lỗ (BLANK ID): đã thêm khoan. Biên dạng lỗ tinh cần thêm nguyên công tiện trong (ID) nếu lỗ thành phẩm lớn hơn lỗ phôi.');
       }
     }
@@ -1034,7 +1344,8 @@
     return { ops, notes, preview: pts, faceStock, mode, mat: M };
   }
 
-  const API = { OPS, DEFAULT_SETTINGS, newOp, compile, sampleProject, profilePoly, parseList, parsePts, asc, f, buildToolpath,
-    MATERIALS, DEFAULT_IGF, igfTutorial, ensureTools, matOf, shapePreview, decideProcesses, resolveElems, toGenZ };
+    const API = { OPS, DEFAULT_SETTINGS, newOp, compile, sampleProject, profilePoly, parseList, parsePts, asc, f, buildToolpath,
+    MATERIALS, DEFAULT_IGF, igfTutorial, ensureTools, matOf, shapePreview, decideProcesses, resolveElems, toGenZ,
+    MACH, flipDir, machTitle, contourPts, areaPts, applyArea, setMach, toolCheck, migrateDecide, defaultArea };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.OKU = API;
 })(this);

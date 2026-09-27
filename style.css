@@ -151,3 +151,9 @@ button:disabled{opacity:.4}
 .offlineget .offzip{display:block;margin-top:8px;background:#fff;color:var(--pri);border:1px solid var(--line);text-decoration:none;text-align:center;font-weight:700;font-size:15px;padding:10px 8px;border-radius:10px}
 .offlineget p{margin:8px 0 0;color:#3d4d59}
 .offlineget .offnow{background:#e8f5e9;color:#1b5e20;border-radius:8px;padding:6px 8px;margin:0 0 8px;font-size:13px}
+.pdcv{display:block;width:100%;height:240px;background:#f4f7fa;border-radius:10px;touch-action:manipulation;margin:8px 0}
+.pdcard{border:1px solid var(--line);border-radius:12px;padding:8px;margin:8px 0;background:#fff}
+.pdcard.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.pdadd{display:flex;gap:8px;align-items:center}
+.pdadd select{flex:1;min-width:0;font-size:16px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.pdcard .warn{color:#a04b00;font-size:12.5px;margin:4px 0}

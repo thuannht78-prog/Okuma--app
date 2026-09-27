@@ -101,7 +101,15 @@ Vát và bo đứng giữa hai đoạn thẳng. Ứng dụng tính lại điểm
 
 ## Bước 4 — PROCESS DECIDE
 
-F6 PROCESS DECIDE, chọn PATTERN, F7 EXECUTE. Thông báo PROCESS DECIDE FINISHED.
+F6 PROCESS DECIDE, chọn PATTERN, F7 EXECUTE. Thông báo PROCESS DECIDE FINISHED. EXECUTE đề xuất nguyên công thô và tinh trên cả biên dạng, hướng Z− về mâm (←, LE32-238 P-177). Người dùng sửa từng nguyên công trước khi sang PROCESS EDIT.
+
+Mỗi nguyên công có MACHINING TYPE (LE32-238 P-177): ROUGH OD / FIN. OD, ROUGH O. FACE / FIN. O. FACE, ROUGH ID / FIN. ID, GROOVE OD / GROOVE ID / GROOVE FACE, THREAD OD / THREAD ID, DRILL CENTER / DRILL BLIND, CUTOFF, và M DRILL FACE / M DRILL SIDE khi Studio có lỗ. Kiểu gắn với chu trình OSP đang dùng: G85/G86 thô, G87 tinh, G01 khỏa mặt, G73 hoặc G01 rãnh, G71 ren, G74 khoan.
+
+Vùng cắt (LE32-238 mục 8-3 và 10-5-5 SHAPE SELECT): chạm đoạn đầu và đoạn cuối trên bản vẽ TURNING SHAPE, hoặc nhập số phần tử. Nét chọn tô cam, có số phần tử và mũi tên hướng cắt. Nút hướng đảo ←/→ hoặc ↓/↑. FIN. OD chỉ các phần tử 2–4 thì G87 chỉ có đúng đoạn đó.
+
+Dao lấy từ TOOL DATA. PROCESS KIND lệch kiểu, hoặc tay RH/LH lệch hướng (RH cắt Z− về mâm, LH cắt Z+), thì cảnh báo — không chặn xuất mã.
+
+Thêm, xóa, đảo thứ tự ngay trên bước này. Setup cũ không có vùng thì được gán cả biên dạng, điểm biên dạng đã lưu không bị viết lại.
 
 Bốn mẫu (LE32-239 P-41):
 
@@ -152,7 +160,7 @@ Xuất `.MIN` sau khi mô phỏng. Chưa chạy hết thì hỏi lại. Một d�
 | FREE SHAPE vẽ phôi từng đoạn (P-90) | Lưu lựa chọn; mô phỏng vẫn dùng thanh tròn OD × LENGTH | Biên dạng phôi tự do là một trình vẽ thứ hai; điện thoại đã có trình vẽ thành phẩm |
 | UNIFORM STOCK, F6 AVE. BLANK GENERATE (P-88) | Lưu STCK RMV H và CORNER R; không tạo lại phôi từ hình tinh | Luật “không phủ vùng không gia công / JUMP” cần hình phôi riêng |
 | CHAMFERING tự chèn vát ren | Lưu C hoặc R; không chèn vào nét | Vát ren gắn với nguyên công ren, không phải mọi nét TEST1 |
-| Bốn mẫu PATTERN và bốn sổ quy tắc | Lưu mẫu. Luật quyết định vẫn là: X đơn điệu → G85, không đơn điệu → G86 | Sổ quy tắc là bảng tham số máy, không có trong hai PDF ở mức đủ để tái lập từng nhánh |
+| Bốn mẫu PATTERN và bốn sổ quy tắc | Lưu mẫu. EXECUTE vẫn chọn G85 khi X đơn điệu và G86 khi không, rồi tách thô/tinh trên cả biên dạng. Người dùng sửa kiểu, đoạn phần tử và hướng | Sổ quy tắc là bảng tham số máy, không có trong hai PDF ở mức đủ để tái lập từng nhánh |
 | CHUCKING ERROR, UNMACHINED ERROR (P-42–44) | Không kiểm hình học kẹp hay vùng chưa cắt | Cần góc mũi dao thật và giao hình chấu với nét; mô phỏng hiện chỉ cảnh báo va chạm đơn giản |
 | L1, D1, D2, CX và các kích thước tâm ngoài DIAMETER D | Có ô, có lưu. Va chạm dùng L2, D3 và DIAMETER D | Mô phỏng 2D/3D chỉ có một hình chấu chữ nhật và một đường kính mũi tâm |
 | DDT FILE | Lưu YES/NO, không xuất tệp | Ứng dụng xuất một `.MIN` cho OSP-P300L |
