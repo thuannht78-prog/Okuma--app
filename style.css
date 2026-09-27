@@ -106,3 +106,9 @@ canvas{width:100%;height:auto;display:block;touch-action:manipulation}
 .elh button{border:0;background:#fde;border-radius:8px;padding:6px 10px}
 .igfadd{margin-top:8px}
 .igfadd .typebtn{min-height:48px;font-size:13px}
+.offlineget{background:#fff;border:1px solid var(--line);border-left:5px solid var(--acc);border-radius:12px;margin:8px;padding:10px 12px;box-shadow:0 1px 2px #0001}
+.offlineget .offh{display:block;margin:0 0 8px;font-size:15px}
+.offlineget .offdl{display:block;background:var(--acc);color:#fff;text-decoration:none;text-align:center;font-weight:700;font-size:16px;padding:12px 10px;border-radius:10px}
+.offlineget .offzip{display:block;margin-top:8px;background:#fff;color:var(--pri);border:1px solid var(--line);text-decoration:none;text-align:center;font-weight:700;font-size:15px;padding:10px 8px;border-radius:10px}
+.offlineget p{margin:8px 0 0;color:#3d4d59}
+.offlineget .offnow{background:#e8f5e9;color:#1b5e20;border-radius:8px;padding:6px 8px;margin:0 0 8px;font-size:13px}

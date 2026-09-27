@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Build offline package
+        run: node scripts/build-offline.mjs
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:

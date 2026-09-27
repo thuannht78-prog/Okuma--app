@@ -10,4 +10,6 @@ Nguồn cú pháp: OSP-P500 PROGRAMMING MANUAL LE33-021-R2 (Oct 2023), IGF-L LE3
 
 Trang GitHub Pages: https://thuannht78-prog.github.io/Okuma--app/
 
+Bản một tệp (mở trực tiếp, không cần mạng): https://thuannht78-prog.github.io/Okuma--app/download/okuma-app-offline.html — gói zip: https://thuannht78-prog.github.io/Okuma--app/download/okuma-app-offline.zip. Workflow Pages chạy `node scripts/build-offline.mjs` mỗi lần đẩy lên `main`. Nút **Tải bản chạy offline** nằm trên đầu ứng dụng.
+
 **CẢNH BÁO: phải chạy thử không phôi / mô phỏng trên máy trước khi cắt.**

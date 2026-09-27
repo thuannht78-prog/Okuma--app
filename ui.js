@@ -775,7 +775,7 @@
   if (!P.ops.length && !localStorage.getItem(KEY)) P = O.sampleProject();
   renderSettings(); renderHelp(); refresh();
   const igfBox = $('#igfRoot'); if (igfBox) igfBox.addEventListener('click', igfRootClick);
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { });
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { });
   // mở tab theo hash (dùng cho chụp màn hình)
   let hv = { '#code': 'v-code', '#prev': 'v-prev', '#set': 'v-set', '#help': 'v-help' }[location.hash];
   if (/^#igf/.test(location.hash || '')) {
