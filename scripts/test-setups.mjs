@@ -122,7 +122,7 @@ async function runPage(cdp, errors, tag) {
   if (!migrated.includes('Da luu')) errors.push(tag + ' không chuyển setup cũ: ' + migrated);
   await ev(cdp, `document.querySelector('#setupList [data-sa="open"]').click()`);
   await waitFor(cdp, `!!document.querySelector('#setForm')`);
-  await ev(cdp, `document.querySelector('[data-step="2"]').click()`);
+  await ev(cdp, `document.querySelector('[data-step="1"]').click()`);
   await waitFor(cdp, `!!document.querySelector('[data-k="od"]')`);
   const od = await ev(cdp, `document.querySelector('[data-k="od"]').value`);
   if (String(od) !== '55') errors.push(tag + ' phôi migrate không phải Ø55: ' + od);
@@ -132,19 +132,24 @@ async function runPage(cdp, errors, tag) {
   await ev(cdp, `document.querySelector('#setupTest1').click()`);
   await waitFor(cdp, `!!document.querySelector('#igfCv') && document.querySelector('#headTitle').textContent === 'TEST1'`);
   const shots = {};
-  shots.s1 = await snapStep(cdp, 1, 'step-1-thiet-lap.png');
-  const machine = await ev(cdp, `!!document.querySelector('#setForm') && !!document.querySelector('[data-k="grip"]')`);
-  if (!machine) errors.push(tag + ' bước Thiết lập thiếu máy hoặc kẹp');
-  shots.s2 = await snapStep(cdp, 2, 'step-2-phoi.png');
+  shots.s1 = await snapStep(cdp, 1, 'igfl-01-blank-setup.png');
+  const machine = await ev(cdp, `!!document.querySelector('#setForm') && !!document.querySelector('[data-k="grip"]') && !!document.querySelector('[data-k="od"]')`);
+  if (!machine) errors.push(tag + ' BLANK/SETUP thiếu phôi, kẹp hoặc máy');
   const blank = await ev(cdp, `document.querySelector('[data-k="od"]').value + 'x' + document.querySelector('[data-k="ol"]').value`);
   if (blank !== '100x82') errors.push(tag + ' TEST1 phôi sai: ' + blank);
-  shots.s3 = await snapStep(cdp, 3, 'step-3-bien-dang.png');
+  shots.s2 = await snapStep(cdp, 2, 'igfl-02-tool-data.png');
+  const tools = await ev(cdp, `document.querySelectorAll('.tool').length`);
+  if (tools < 2) errors.push(tag + ' bảng dao thiếu dao: ' + tools);
+  shots.s3 = await snapStep(cdp, 3, 'igfl-03-turning-shape.png');
   const shape = await ev(cdp, `document.querySelectorAll('#elList .el').length`);
   if (shape < 3) errors.push(tag + ' biên dạng TEST1 trống');
-  shots.s4 = await snapStep(cdp, 4, 'step-4-nguyen-cong.png');
+  shots.s4 = await snapStep(cdp, 4, 'igfl-04-process-decide.png');
+  const decided = await ev(cdp, `!!document.querySelector('[data-k="decidePattern"]') && !!document.querySelector('#igfRedecide')`);
+  if (!decided) errors.push(tag + ' PROCESS DECIDE thiếu mẫu hoặc EXECUTE');
+  shots.s5 = await snapStep(cdp, 5, 'igfl-05-process-edit.png');
   const ops = await ev(cdp, `document.querySelectorAll('#igfOps li.op').length`);
   if (ops < 1) errors.push(tag + ' không có nguyên công');
-  shots.s5 = await snapStep(cdp, 5, 'step-5-mo-phong.png');
+  shots.s6 = await snapStep(cdp, 6, 'igfl-06-process-test.png');
   await waitFor(cdp, `!!document.querySelector('#cvSim') && !!document.querySelector('#simPlay')`);
   const sim = await ev(cdp, `(() => {
     const btn = document.querySelector('#simStep');
@@ -157,11 +162,11 @@ async function runPage(cdp, errors, tag) {
     return { n, t: (document.querySelector('#simStatus') || {}).textContent || '' };
   })()`);
   if (!sim.t.includes('đã chạy hết')) errors.push(tag + ' mô phỏng không xong: ' + sim.t);
-  shots.s6 = await snapStep(cdp, 6, 'step-6-xuat-code.png');
-  await waitFor(cdp, `!!document.querySelector('#safeExport') && document.querySelector('#safeExport').textContent.includes('dry run')`);
+  shots.s7 = await snapStep(cdp, 7, 'igfl-07-program-create.png');
+  await waitFor(cdp, `!!document.querySelector('#safeExport') && document.querySelector('#safeExport').textContent.includes('dry run') && !!document.querySelector('#igfFile') && !!document.querySelector('[data-k="ddt"]')`);
   await ev(cdp, `document.querySelector('#safeExport').scrollIntoView({ block: 'center' })`);
   await sleep(150);
-  shots.remind = await shot(cdp, 'step-6-safety-reminder.png');
+  shots.remind = await shot(cdp, 'igfl-07-safety-reminder.png');
   await waitFor(cdp, `!!document.querySelector('#igfDl') && (document.querySelector('.simgate')||{}).textContent.includes('Đã mô phỏng')`);
   await ev(cdp, `(() => {
     window.__dl = '';

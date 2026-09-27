@@ -196,7 +196,7 @@ async function main() {
     })()`);
     if (!shape.diff) throw new Error('Canvas IGF trống');
 
-    await ev(cdp, `document.querySelector('[data-step="4"]').click()`);
+    await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
     await waitFor(cdp, `document.querySelectorAll('#igfOps button[data-a="ed"]').length > 0`);
     const before = await ev(cdp, `document.querySelector('#igfOps li small').textContent`);
     await ev(cdp, `document.querySelector('#igfOps button[data-a="ed"]').click()`);
@@ -207,7 +207,7 @@ async function main() {
     const stored = await ev(cdp, `(() => { const lib = JSON.parse(localStorage.getItem('okuma_lb3000_setups_v1')); const s = lib.items.find(x => x.name === 'TEST1') || lib.items[0]; return s.project.ops[0].feed; })()`);
     if (stored !== 0.33) throw new Error('localStorage không lưu feed, giá trị=' + stored);
 
-    await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
+    await ev(cdp, `document.querySelector('[data-step="6"]').click()`);
     await waitFor(cdp, `!!document.querySelector('#cvSim') && !!document.querySelector('#simStep')`);
     const sim = await ev(cdp, `(() => {
       const btn = document.querySelector('#simStep');
@@ -225,7 +225,7 @@ async function main() {
     await sleep(100);
     const shotApp = await shot(cdp, 'offline-file-open.png');
 
-    await ev(cdp, `document.querySelector('[data-step="6"]').click()`);
+    await ev(cdp, `document.querySelector('[data-step="7"]').click()`);
     await waitFor(cdp, `!!document.querySelector('#igfDl') && (document.querySelector('.simgate')||{}).textContent && document.querySelector('.simgate').textContent.includes('Đã mô phỏng')`);
     await ev(cdp, `(() => {
       window.__dl = '';

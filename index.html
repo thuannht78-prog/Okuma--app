@@ -23,7 +23,7 @@
 <main>
   <section id="v-setup" class="view on">
     <div class="rowh"><h2>Quản lý setup</h2><span id="setupCount" class="muted"></span></div>
-    <p class="hint">Mỗi setup là một sản phẩm trong IGF: thiết lập máy, phôi (BLANK), biên dạng (TURNING SHAPE), nguyên công (PROCESS DECIDE), mô phỏng và xuất mã (PROGRAM CREATE). Dữ liệu lưu trên máy này.</p>
+    <p class="hint">Mỗi setup là một tệp PET của IGF-L: phôi và đồ gá (BLANK/SETUP), bảng dao (TOOL DATA), biên dạng (TURNING SHAPE), quyết định (PROCESS DECIDE), sửa nguyên công (PROCESS EDIT), kiểm tra (PROCESS TEST) và tạo chương trình (PROGRAM CREATE). Dữ liệu lưu trên máy này.</p>
     <div class="btns">
       <button type="button" id="setupNew" class="b1">Tạo setup mới</button>
       <button type="button" id="setupTest1" class="b2">Tạo từ ví dụ sách (TEST1)</button>
@@ -88,16 +88,18 @@
         Bản đã <b>thêm vào màn hình chính</b> (Add to Home Screen) cũng chạy offline sau lần mở đầu.</p>
       </div>
     </div>
-    <h3>Quy trình IGF (6 bước)</h3>
+    <h3>Quy trình IGF-L (7 bước trong tệp PET)</h3>
+    <p class="small">Sách hướng dẫn LE32-239-R1 (5/2023) và sách tham chiếu LE32-238-R1 (8/2023). Số trang là trang in.</p>
     <ol class="guide">
-      <li><b>Thiết lập</b> (BLANK/SETUP) — máy, dao, mâm, ụ động.</li>
-      <li><b>Phôi</b> (BLANK) — vật liệu, Ø, chiều dài, mốc Z.</li>
-      <li><b>Biên dạng</b> (TURNING SHAPE) — nét tinh của chi tiết.</li>
-      <li><b>Nguyên công</b> (PROCESS DECIDE) — danh sách gia công, kể cả nguyên công thêm tay.</li>
-      <li><b>Mô phỏng</b> — xem đường dao 2D/3D, rồi chạy hết trước khi xuất.</li>
-      <li><b>Xuất code</b> (PROGRAM CREATE) — tải tệp .MIN. Trên máy vẫn phải chạy thử không phôi.</li>
+      <li><b>Phôi và đồ gá</b> (BLANK/SETUP) — vật liệu, ROUND BAR / FREE / UNIFORM STOCK, OD, LENGTH, BLANK ID, mốc Z, G50; tờ 1 SPINDLE (kẹp, chấu); tờ CENTER. LE32-239 P-17–19, LE32-238 P-84–95.</li>
+      <li><b>Bảng dao</b> (TOOL DATA) — loại dao, TOOL ANGLE, EDGE ANGLE, PROCESS KIND, T No., OFFSET No. Ví dụ sách: T1 thô 80°/5, T2 tinh 55°/3. LE32-239 P-13.</li>
+      <li><b>Biên dạng tiện</b> (TURNING SHAPE) — START PT SX/SZ, DEF. DIR., rồi FACE, TAPER, LONG, C-CHF, R-CHF, JUMP. LE32-239 P-20–38, LE32-238 P-96.</li>
+      <li><b>Quyết định</b> (PROCESS DECIDE) — chọn PATTERN rồi F7 EXECUTE. Bốn sổ quy tắc LE32-239 P-40–41. LE32-239 P-39–44, LE32-238 P-170.</li>
+      <li><b>Sửa nguyên công</b> (PROCESS EDIT) — chèn, xóa, đảo, sao chép, sửa chế độ cắt. LE32-239 P-45–46, LE32-238 P-210.</li>
+      <li><b>Kiểm tra</b> (PROCESS TEST) — chạy hoạt hình đường dao. LE32-239 P-47–48, LE32-238 P-201.</li>
+      <li><b>Tạo chương trình</b> (PROGRAM CREATE) — FILE NAME (16 ký tự), DDT FILE, PROGRAM NAME (O + 8 ký tự), rồi tải .MIN. LE32-239 P-49–50, LE32-238 P-299.</li>
     </ol>
-    <p class="small">Từ màn Quản lý setup: tạo setup mới, mở bản đã lưu, hoặc sao chép. Dữ liệu lưu trên máy này.</p>
+    <p class="small">Màn Quản lý setup tương ứng thao tác tệp: F3 NEW FILE, F2 EDIT, F5 COPY, F6 RENAME, F7 DELETE (LE32-239 P-14–16). Dao đăng ký trên NC trước khi mở tệp (mục 3-2). Ụ tiến/lùi là nguyên công TS ADVANCE / TS RETRACT (LE32-238 P-368).</p>
   </div>
 </div>
 <div id="toast" class="toast"></div>

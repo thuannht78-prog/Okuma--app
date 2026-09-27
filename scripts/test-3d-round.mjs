@@ -117,8 +117,8 @@ async function touch(cdp, type, points) {
 }
 async function openSim(cdp) {
   await ev(cdp, `document.querySelector('#setupSample').click()`);
-  await waitFor(cdp, `!!document.querySelector('[data-step="5"]')`);
-  await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
+  await waitFor(cdp, `!!document.querySelector('[data-step="6"]')`);
+  await ev(cdp, `document.querySelector('[data-step="6"]').click()`);
   await waitFor(cdp, `!!document.querySelector('#cvSim3d') && window.OKU3D && window.OKU3D.ok()`);
   await ev(cdp, `document.querySelector('#sim3d').click()`);
   await sleep(200);

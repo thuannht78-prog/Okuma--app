@@ -134,8 +134,8 @@ async function prep(cdp, offline) {
 
 async function openSim(cdp) {
   await ev(cdp, `document.querySelector('#setupSample').click()`);
-  await waitFor(cdp, `!!document.querySelector('[data-step="5"]')`);
-  await ev(cdp, `document.querySelector('[data-step="5"]').click()`);
+  await waitFor(cdp, `!!document.querySelector('[data-step="6"]')`);
+  await ev(cdp, `document.querySelector('[data-step="6"]').click()`);
   await waitFor(cdp, `!!document.querySelector('#cvSim3d') && !!window.OKU3D && !!document.querySelector('#simStep')`);
   await sleep(250);
   const labels = await ev(cdp, `(() => ({

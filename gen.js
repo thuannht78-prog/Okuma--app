@@ -823,8 +823,8 @@
     return { settings: Object.assign({}, DEFAULT_SETTINGS, { stockD: 60, stockL: 120 }), ops };
   }
 
-  // ---------------- IGF (Advanced One-Touch IGF-L) ----------------
-  // Luồng: MATERIAL + BLANK/SETUP → TURNING SHAPE → PROCESS DECIDE → PROGRAM CREATE.
+  // ---------------- IGF (Advanced One-Touch IGF-L, LE32-239 / LE32-238) ----------------
+  // PET: BLANK/SETUP → TOOL DATA → TURNING SHAPE → PROCESS DECIDE → PROCESS EDIT → PROCESS TEST → PROGRAM CREATE.
   const MATERIALS = {
     S45C: { name: 'S45C', vr: 180, fr: 0.25, dx: 3, lx: 0.2, lz: 0.1, vf: 220, ff: 0.12, gv: 110, gf: 0.08 },
     SCM440: { name: 'SCM440', vr: 160, fr: 0.22, dx: 2.5, lx: 0.2, lz: 0.1, vf: 200, ff: 0.1, gv: 100, gf: 0.07 },
@@ -833,16 +833,40 @@
     FC250: { name: 'FC250', vr: 140, fr: 0.2, dx: 3, lx: 0.2, lz: 0.1, vf: 160, ff: 0.1, gv: 90, gf: 0.07 }
   };
   const DEFAULT_IGF = {
+    flowV: 2,
     material: 'S45C', mat: null,
     blankShape: 'round', od: 100, ol: 82,
     blankId: 'none', id: 0, idDepth: 0,
     zeroRef: 'left', zeroPos: 0, g50: 2500,
-    grip: 'od', jawL2: 20, jawD3: 75,
-    useCenter: false, tailD: 20, uniformH: 1,
+    grip: 'od',
+    jawL1: 0, jawD1: 0, jawL2: 20, jawD2: 0, jawL3: 0, jawD3: 75, chuckCx: 0,
+    useCenter: false,
+    ctrL: 0, tailD: 20, ctrL1: 0, ctrD1: 0, ctrL2: 0, ctrD2: 0, ctrHole: 0, ctrZ: 0,
+    uniformH: 1, cornerR: 0,
     sx: 0, sz: 80, dir: 'CCW',
+    chamfer: 0, chfType: 'C',
     roughT: 1, finishT: 2, boreT: 7,
+    tools: null,
+    decidePattern: 'standard', decided: false,
+    ddt: true, fileName: '',
     elems: []
   };
+  function ensureTools(ig) {
+    if (!ig) return [];
+    if (!Array.isArray(ig.tools) || !ig.tools.length) {
+      ig.tools = [
+        { kind: 'single', angle: 80, edge: 5, role: 'ROUGH OD', role2: 'ROUGH FACE', t: num(ig.roughT, 1) || 1, offset: num(ig.roughT, 1) || 1 },
+        { kind: 'single', angle: 55, edge: 3, role: 'FINISH OD', role2: 'FINISH FACE', t: num(ig.finishT, 2) || 2, offset: num(ig.finishT, 2) || 2 }
+      ];
+    }
+    const rough = ig.tools.find(t => t && (t.role === 'ROUGH OD' || t.role2 === 'ROUGH OD')) || ig.tools[0];
+    const fin = ig.tools.find(t => t && t !== rough && (t.role === 'FINISH OD' || t.role2 === 'FINISH OD')) || ig.tools[1] || ig.tools[0];
+    if (rough && rough.t !== '' && rough.t != null) ig.roughT = Number(rough.t) || ig.roughT;
+    if (fin && fin.t !== '' && fin.t != null) ig.finishT = Number(fin.t) || ig.finishT;
+    const bore = ig.tools.find(t => t && (t.role === 'ROUGH ID' || t.role === 'FINISH ID'));
+    if (bore && bore.t !== '' && bore.t != null) ig.boreT = Number(bore.t) || ig.boreT;
+    return ig.tools;
+  }
   function igfTutorial() {
     return Object.assign({}, DEFAULT_IGF, {
       material: 'S45C', od: 100, ol: 82, zeroRef: 'left', zeroPos: 0, g50: 2500,
@@ -942,9 +966,14 @@
   }
   function decideProcesses(igf) {
     const g = Object.assign({}, DEFAULT_IGF, igf || {});
+    ensureTools(g);
+    if (igf) { igf.tools = g.tools; igf.roughT = g.roughT; igf.finishT = g.finishT; igf.boreT = g.boreT; }
     const M = matOf(g);
     const sh = resolveElems(g, g.elems || [], g.sx, g.sz);
     const notes = sh.notes.slice();
+    if (g.decidePattern && g.decidePattern !== 'standard') {
+      notes.push('Mẫu PROCESS DECIDE đã lưu. Ứng dụng vẫn chọn G85 khi X đơn điệu và G86 khi không. Bốn sổ quy tắc IGF không được mô phỏng.');
+    }
     if (sh.pts.length < 2) return { ops: [], notes: notes.concat(['Biên dạng (TURNING SHAPE) cần ít nhất một đoạn sau điểm đầu.']), preview: [] };
     let pts = sh.pts.map(p => ({ x: p.x, z: toGenZ(p.z, g), t: p.t, r: p.r }));
     const zMax = Math.max(...pts.map(p => p.z));
@@ -979,6 +1008,6 @@
   }
 
   const API = { OPS, DEFAULT_SETTINGS, newOp, compile, sampleProject, profilePoly, parseList, parsePts, asc, f, buildToolpath,
-    MATERIALS, DEFAULT_IGF, igfTutorial, matOf, shapePreview, decideProcesses, resolveElems, toGenZ };
+    MATERIALS, DEFAULT_IGF, igfTutorial, ensureTools, matOf, shapePreview, decideProcesses, resolveElems, toGenZ };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.OKU = API;
 })(this);
