@@ -124,9 +124,39 @@
     '  gl_FragColor=vec4(uColor*(0.34+L+L2),1.0);',
     '}'
   ].join('');
+  const LVS = [
+    'attribute vec3 aFrom; attribute vec3 aTo; attribute float aSide; attribute float aEnd;',
+    'uniform mat4 uM; uniform mat4 uVP; uniform vec2 uRes; uniform float uPx;',
+    'varying float vLift;',
+    'void main(){',
+    '  vec4 c0=uVP*uM*vec4(aFrom,1.0);',
+    '  vec4 c1=uVP*uM*vec4(aTo,1.0);',
+    '  vec2 s0=c0.xy/max(c0.w,0.0001);',
+    '  vec2 s1=c1.xy/max(c1.w,0.0001);',
+    '  vec2 d=s1-s0;',
+    '  float len=length(d);',
+    '  vec2 dir=len<1e-5?vec2(1.0,0.0):d/len;',
+    '  vec2 nrm=vec2(-dir.y,dir.x);',
+    '  vec4 c=aEnd<0.5?c0:c1;',
+    '  c.xy+=nrm*aSide*(uPx/max(uRes.y,1.0))*c.w;',
+    '  gl_Position=c;',
+    '  vLift=aFrom.z;',
+    '}'
+  ].join('');
+  const LFS = [
+    'precision mediump float;',
+    'varying float vLift;',
+    'uniform vec3 uRapid; uniform vec3 uFeed; uniform float uAlpha; uniform float uDash;',
+    'void main(){',
+    '  bool rapid=vLift<0.7;',
+    '  if(rapid && uDash>0.5 && fract((gl_FragCoord.x+gl_FragCoord.y)/uDash)>0.48) discard;',
+    '  gl_FragColor=vec4(rapid?uRapid:uFeed, uAlpha);',
+    '}'
+  ].join('');
 
-  let canvas = null, gl = null, prog = null, buf = null, raf = 0, lastT = 0;
-  let locs = null, failed = '', verts = 0, builtKey = '';
+  let canvas = null, gl = null, prog = null, buf = null, lprog = null, lbuf = null, raf = 0, lastT = 0;
+  let locs = null, llocs = null, failed = '', verts = 0, builtKey = '';
+  let showPath = true, linePx = 1.25;
   let playing = false, cutting = false, liveLock = false, section = false, spin = 0.35;
   let orbitInvert = false;
   const cam = { yaw: 0.82, pitch: 0.36, dist: 180, target: [0, 8, 0], user: false };
@@ -256,6 +286,26 @@
       uRs: gl.getUniformLocation(prog, 'uRs')
     };
     buf = gl.createBuffer();
+    const keepFail = failed;
+    const lvs = sh(gl.VERTEX_SHADER, LVS), lfs = sh(gl.FRAGMENT_SHADER, LFS);
+    failed = keepFail;
+    if (lvs && lfs) {
+      lprog = gl.createProgram();
+      gl.attachShader(lprog, lvs); gl.attachShader(lprog, lfs);
+      gl.bindAttribLocation(lprog, 2, 'aFrom'); gl.bindAttribLocation(lprog, 3, 'aTo');
+      gl.bindAttribLocation(lprog, 4, 'aSide'); gl.bindAttribLocation(lprog, 5, 'aEnd');
+      gl.linkProgram(lprog);
+      if (!gl.getProgramParameter(lprog, gl.LINK_STATUS)) { gl.deleteProgram(lprog); lprog = null; }
+      else {
+        llocs = {
+          uM: gl.getUniformLocation(lprog, 'uM'), uVP: gl.getUniformLocation(lprog, 'uVP'),
+          uRes: gl.getUniformLocation(lprog, 'uRes'), uPx: gl.getUniformLocation(lprog, 'uPx'),
+          uRapid: gl.getUniformLocation(lprog, 'uRapid'), uFeed: gl.getUniformLocation(lprog, 'uFeed'),
+          uAlpha: gl.getUniformLocation(lprog, 'uAlpha'), uDash: gl.getUniformLocation(lprog, 'uDash')
+        };
+        lbuf = gl.createBuffer();
+      }
+    }
     gl.enable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
     return true;
@@ -315,8 +365,12 @@
       canvas.removeEventListener('touchcancel', onTouchEnd);
       if (canvas._okRo) { canvas._okRo.disconnect(); canvas._okRo = null; }
     }
-    if (gl) { if (buf) gl.deleteBuffer(buf); if (prog) gl.deleteProgram(prog); const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); }
-    canvas = null; gl = null; prog = null; buf = null; locs = null; scene = null; builtKey = '';
+    if (gl) {
+      if (buf) gl.deleteBuffer(buf); if (lbuf) gl.deleteBuffer(lbuf);
+      if (prog) gl.deleteProgram(prog); if (lprog) gl.deleteProgram(lprog);
+      const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext();
+    }
+    canvas = null; gl = null; prog = null; lprog = null; buf = null; lbuf = null; locs = null; llocs = null; scene = null; builtKey = '';
   }
 
   function angList(op) {
@@ -786,11 +840,6 @@
       if (t1 - t0 < 1e-3) return null;
       return [z0 + dz * t0, r0 + dr * t0, z0 + dz * t1, r0 + dr * t1];
     }
-    function ribbon(z0, r0, z1, r1, w) {
-      const dx = z1 - z0, dy = r1 - r0, len = Math.hypot(dx, dy) || 1, px = -dy / len * w, py = dx / len * w;
-      const lift = 1.4;
-      quad(z0 + px, r0 + py + lift, 2.2, z1 + px, r1 + py + lift, 2.2, z1 - px, r1 - py + lift, 2.2, z0 - px, r0 - py + lift, 2.2);
-    }
     const shown = [];
     for (let k = 0; k < lim; k++) shown.push(moves[k]);
     if (mi < moves.length && moves[mi]) {
@@ -799,25 +848,21 @@
       const t = clamp(uu / L, 0, 1);
       shown.push({ z0: m.z0, r0: m.r0, z1: m.z0 + (m.z1 - m.z0) * t, r1: m.r0 + (m.r1 - m.r0) * t, kind: m.kind });
     }
-    start(COL.rapid, 'fixed', 0, 0);
+    const rapidPts = [], feedPts = [];
+    function pushLine(dst, z0, r0, z1, r1, kind) {
+      const lift = kind ? 1.2 : 0.25;
+      const ax = z0, ay = r0, bx = z1, by = r1;
+      [[0, -1], [1, -1], [1, 1], [0, -1], [1, 1], [0, 1]].forEach(cr => {
+        dst.push(ax, ay, lift, bx, by, lift, cr[1], cr[0]);
+      });
+    }
     shown.forEach(m => {
-      if (!m || m.kind !== 'rapid') return;
+      if (!m) return;
       const c = clipSeg(m.z0, m.r0, m.z1, m.r1); if (!c) return;
-      const len = Math.hypot(c[2] - c[0], c[3] - c[1]);
-      const dash = 2.2, gap = 1.5, step = dash + gap;
-      for (let s = 0; s < len; s += step) {
-        const a = s / len, b = Math.min(len, s + dash) / len;
-        ribbon(c[0] + (c[2] - c[0]) * a, c[1] + (c[3] - c[1]) * a, c[0] + (c[2] - c[0]) * b, c[1] + (c[3] - c[1]) * b, 0.9);
-      }
+      pushLine(m.kind === 'rapid' ? rapidPts : feedPts, c[0], c[1], c[2], c[3], m.kind === 'rapid' ? 0 : 1);
     });
-    stop();
-    start(COL.feed, 'fixed', 0, 0);
-    shown.forEach(m => {
-      if (!m || m.kind === 'rapid') return;
-      const c = clipSeg(m.z0, m.r0, m.z1, m.r1); if (!c) return;
-      ribbon(c[0], c[1], c[2], c[3], 1.5);
-    });
-    stop();
+    const lineData = new Float32Array(rapidPts.length + feedPts.length);
+    lineData.set(rapidPts, 0); lineData.set(feedPts, rapidPts.length);
 
     // Dao / chíp.
     let tz = zHi + 8, tr = stockR + 16, typ = 'od', tdia = 8, side = 'OD';
@@ -874,6 +919,7 @@
 
     return {
       data, vn, parts: parts.filter(p => p.n > 0 && !p.skip),
+      lines: { data: lineData, nRapid: rapidPts.length / 8, nFeed: feedPts.length / 8 },
       cuts: { nF: Math.min(2, flats.length), nH: Math.min(4, axH.length), nR: Math.min(4, rdH.length), uF, uH, uHm, uR, uRs },
       center: [(zLo + zHi) / 2, stockR * 0.15, 0],
       fit: Math.max(70, (zHi - zLo) * 0.72 + jawR * 1.15),
@@ -889,6 +935,11 @@
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
     gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
     verts = sc.vn;
+    if (lbuf && sc.lines) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, lbuf);
+      gl.bufferData(gl.ARRAY_BUFFER, sc.lines.data, gl.DYNAMIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    }
   }
 
   function resize() {
@@ -942,6 +993,44 @@
       gl.drawArrays(gl.TRIANGLES, p.o, p.n);
     });
     gl.disable(gl.POLYGON_OFFSET_FILL);
+    drawPath(vp, id);
+  }
+
+  function drawPath(vp, idM) {
+    const lines = scene && scene.lines;
+    if (!showPath || !lprog || !lbuf || !llocs || !lines || !(lines.nRapid + lines.nFeed)) return;
+    gl.useProgram(lprog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, lbuf);
+    const stride = 32;
+    gl.enableVertexAttribArray(2); gl.enableVertexAttribArray(3);
+    gl.enableVertexAttribArray(4); gl.enableVertexAttribArray(5);
+    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, stride, 0);
+    gl.vertexAttribPointer(3, 3, gl.FLOAT, false, stride, 12);
+    gl.vertexAttribPointer(4, 1, gl.FLOAT, false, stride, 24);
+    gl.vertexAttribPointer(5, 1, gl.FLOAT, false, stride, 28);
+    gl.uniformMatrix4fv(llocs.uM, false, idM);
+    gl.uniformMatrix4fv(llocs.uVP, false, vp);
+    gl.uniform2f(llocs.uRes, canvas.width, canvas.height);
+    const dpr = Math.min(2, root.devicePixelRatio || 1);
+    gl.uniform1f(llocs.uPx, linePx * dpr);
+    gl.uniform3f(llocs.uRapid, COL.rapid[0], COL.rapid[1], COL.rapid[2]);
+    gl.uniform3f(llocs.uFeed, COL.feed[0], COL.feed[1], COL.feed[2]);
+    gl.uniform1f(llocs.uAlpha, 0.9);
+    gl.uniform1f(llocs.uDash, 6.0 * dpr);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.drawArrays(gl.TRIANGLES, 0, lines.nRapid + lines.nFeed);
+    gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.disableVertexAttribArray(2); gl.disableVertexAttribArray(3);
+    gl.disableVertexAttribArray(4); gl.disableVertexAttribArray(5);
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
   }
 
   function frame(ts) {
@@ -998,6 +1087,11 @@
     const c = hexRgb(hex);
     if (!c || !COL[key]) return;
     COL[key][0] = c[0]; COL[key][1] = c[1]; COL[key][2] = c[2];
+  }
+  function setPathStyle(v) {
+    if (!v) return;
+    if (v.showPath != null) showPath = !!v.showPath;
+    if (v.linePx != null) linePx = clamp(Number(v.linePx) || 1.25, 0.75, 3);
   }
   function setAppearance(v) {
     if (!v) return;
@@ -1079,7 +1173,7 @@
   }
 
   root.OKU3D = {
-    mount, unmount, update, resetCam, setSection, probe, lookEnd, setAppearance, diskMeasure,
+    mount, unmount, update, resetCam, setSection, probe, lookEnd, setAppearance, setPathStyle, diskMeasure,
     current: () => canvas,
     ok: () => !!(gl && !failed),
     fail: () => failed,

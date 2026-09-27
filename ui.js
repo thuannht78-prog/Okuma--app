@@ -231,7 +231,9 @@
     const ops = P.ops.filter(o => o.on !== false);
     const fz = ops.find(o => o.type === 'facing'); const zS = fz ? num(fz.zStock, 0) : 0;
     // ---- mặt cắt dọc
-    const cv = $('#cvSide'), g = cv.getContext('2d'), Wd = cv.width, Ht = cv.height;
+    const cv = $('#cvSide');
+    syncCanvasBuffer(cv);
+    const g = cv.getContext('2d'), Wd = cv.width, Ht = cv.height;
     g.clearRect(0, 0, Wd, Ht); g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, Wd, Ht);
     const zmin = -Lg - 12, zmax = 22, rmax = Rr + 8;
     const sc = Math.min((Wd - 20) / (zmax - zmin), (Ht - 20) / (2 * rmax));
@@ -305,6 +307,20 @@
     if (anyTail && S.tail !== 'none') {
       g.fillStyle = '#6a1b9aaa'; g.beginPath(); g.moveTo(X(-1.5), Y(0)); g.lineTo(X(8), Y(5)); g.lineTo(X(8), Y(-5)); g.closePath(); g.fill();
       g.fillRect(X(8), Y(9), X(zmax) - X(8), Y(-9) - Y(9)); g.fillStyle = '#6a1b9a'; g.fillText('Chống tâm', X(2), Y(9) - 5);
+    }
+    if (simDriven && PATH && loadView().showPath !== false) {
+      const px = Number(loadView().linePx) || 1.25;
+      const scale = cv.width / Math.max(1, cv.clientWidth || cv.width);
+      const lim = Math.min(sim.mi, PATH.moves.length);
+      PATH.moves.slice(0, lim).forEach(m => {
+        const rapid = m.kind === 'rapid';
+        g.strokeStyle = rapid ? '#e8750a' : '#1565c0';
+        g.lineWidth = Math.max(1, px * scale);
+        g.globalAlpha = rapid ? 0.7 : 0.85;
+        g.setLineDash(rapid ? [5, 4] : []);
+        g.beginPath(); g.moveTo(X(m.z0), Y(m.r0)); g.lineTo(X(m.z1), Y(m.r1)); g.stroke();
+      });
+      g.globalAlpha = 1; g.setLineDash([]); g.lineWidth = 1;
     }
     // ---- mặt đầu
     const cf = $('#cvFace'), h = cf.getContext('2d'), W2 = cf.width, H2 = cf.height;
@@ -414,7 +430,7 @@
   // ---------- IGF ----------
   let igfStep = 1, PATH = null, igfDidAuto = false;
   const sim = { play: false, mi: 0, u: 0, speed: 1, raf: 0, last: 0 };
-  let simView = 'both', simSection = false, prevView = '2d', prevSection = false;
+  let simView = 'both', simSection = false, prevView = '2d', prevSection = false, simDriven = false;
   const VIEW_KEY = 'okuma_sim3d_colors';
   const VIEW_PRESETS = {
     thep: { name: 'Thép', stock: '#9eabb4', cut: '#7f8e9e', tool: '#e6c233', rapid: '#fa7a0d', feed: '#1f7af0', chuck: '#5c6b78', bg: '#e7eef4' },
@@ -423,7 +439,7 @@
     toi: { name: 'Tối', stock: '#8a939c', cut: '#6e787f', tool: '#ffd54f', rapid: '#ff8a50', feed: '#64b5f6', chuck: '#455a64', bg: '#1c2830' },
     sang: { name: 'Sáng', stock: '#eceff1', cut: '#cfd8dc', tool: '#f9a825', rapid: '#ef6c00', feed: '#0277bd', chuck: '#90a4ae', bg: '#ffffff' }
   };
-  const VIEW_DEFAULT = Object.assign({ invert: false, preset: 'thep' }, VIEW_PRESETS.thep);
+  const VIEW_DEFAULT = Object.assign({ invert: false, preset: 'thep', showPath: true, linePx: 1.25 }, VIEW_PRESETS.thep);
   function loadView() {
     const v = Object.assign({}, VIEW_DEFAULT);
     try {
@@ -440,8 +456,37 @@
   }
   function saveView(v, src) {
     try { localStorage.setItem(VIEW_KEY, JSON.stringify(v)); } catch (e) { /* bộ nhớ đầy */ }
-    if (window.OKU3D) window.OKU3D.setAppearance(v);
+    if (window.OKU3D) { window.OKU3D.setAppearance(v); window.OKU3D.setPathStyle(v); }
     paintColorInputs(v, src);
+    paintPathControls(v);
+  }
+  function paintPathControls(v) {
+    v = v || loadView();
+    const on = v.showPath !== false;
+    document.querySelectorAll('[data-sim="path"]').forEach(b => { b.textContent = on ? 'Ẩn đường dao' : 'Hiện đường dao'; b.classList.toggle('on', on); });
+    document.querySelectorAll('[data-simlwlab]').forEach(el => { el.textContent = String(v.linePx == null ? 1.25 : v.linePx); });
+    document.querySelectorAll('[data-simlw]').forEach(el => { if (el !== document.activeElement) el.value = v.linePx == null ? 1.25 : v.linePx; });
+  }
+  function simDockHTML(withIds) {
+    const id = k => withIds ? ` id="${k}"` : '';
+    const v = loadView();
+    const px = v.linePx == null ? 1.25 : v.linePx;
+    return `<div class="simdock">
+      <div class="simbar">
+        <button type="button" class="b1"${id('simPlay')} data-sim="play">▶ Chạy</button>
+        <button type="button" class="b2"${id('simPause')} data-sim="pause">⏸ Dừng</button>
+        <button type="button" class="b2"${id('simStep')} data-sim="step">Bước</button>
+        <button type="button" class="b2"${id('simReset')} data-sim="reset">⟲ Đầu</button>
+      </div>
+      <div class="simdockrow"><span>Tốc độ <b${id('simSpdLab')} data-simspdlab>${sim.speed}×</b></span><input${id('simSpeed')} data-simspd type="range" min="0.25" max="4" step="0.25" value="${sim.speed}"></div>
+      <p class="small"${id('simStatus')} data-simstat></p>
+      <div class="chips"${id('simChips')} data-simchips></div>
+      <div class="simdockrow">
+        <button type="button" class="b2" data-sim="path">${v.showPath === false ? 'Hiện đường dao' : 'Ẩn đường dao'}</button>
+        <span>Nét <b data-simlwlab>${px}</b></span>
+        <input data-simlw type="range" min="0.75" max="3" step="0.25" value="${px}">
+      </div>
+    </div>`;
   }
   function colorPanelHTML() {
     const keys = [['stock', 'Màu phôi'], ['cut', 'Mặt đã cắt'], ['tool', 'Màu dao'], ['rapid', 'Chạy nhanh'], ['feed', 'Chạy dao'], ['chuck', 'Màu mâm / ụ'], ['bg', 'Nền']];
@@ -515,18 +560,101 @@
     return { z: m.z0 + (m.z1 - m.z0) * u, r: m.r0 + (m.r1 - m.r0) * u, i: m.i, id: m.opId, tail: m.tail, kind: m.kind };
   }
   function renderSimChrome() {
-    const chips = $('#simChips'); if (!chips || !PATH) return;
-    chips.innerHTML = P.ops.map((op, i) => `<button type="button" class="${op.on === false ? 'off' : ''}" data-id="${op.id}">${i + 1}. ${esc(O.OPS[op.type] ? O.OPS[op.type].name : op.type)}</button>`).join('');
+    const chipHtml = P.ops.map((op, i) => `<button type="button" class="${op.on === false ? 'off' : ''}" data-id="${op.id}">${i + 1}. ${esc(O.OPS[op.type] ? O.OPS[op.type].name : op.type)}</button>`).join('');
+    const chipBoxes = document.querySelectorAll('[data-simchips]');
+    if (!chipBoxes.length || !PATH) return;
+    chipBoxes.forEach(chips => { chips.innerHTML = chipHtml; });
     const rows = (PATH.hits || []).map(h => ({ msg: h.msg, at: h.at, kind: h.kind }));
     (R && R.warnings || []).forEach(w => {
       if (w.lvl === 'info') return;
       if (!rows.some(r => r.msg === w.msg)) rows.push({ msg: (w.lvl === 'err' ? 'Lỗi: ' : 'Cảnh báo: ') + w.msg, at: 0, kind: w.lvl, always: true });
     });
     const box = $('#simHits');
-    box.innerHTML = rows.length ? `<ul class="wlist" id="hitList">${rows.map(r => `<li class="${r.kind === 'err' ? 'err' : ''}" data-at="${r.at}" data-always="${r.always ? 1 : 0}">${esc(r.msg)}</li>`).join('')}</ul>` : `<p class="hint">Không thấy va chạm chấu, chống tâm, vượt hành trình, khỏa tới tâm hoặc cắt đứt khi chống tâm đang tiến.</p>`;
+    if (box) box.innerHTML = rows.length ? `<ul class="wlist" id="hitList">${rows.map(r => `<li class="${r.kind === 'err' ? 'err' : ''}" data-at="${r.at}" data-always="${r.always ? 1 : 0}">${esc(r.msg)}</li>`).join('')}</ul>` : `<p class="hint">Không thấy va chạm chấu, chống tâm, vượt hành trình, khỏa tới tâm hoặc cắt đứt khi chống tâm đang tiến.</p>`;
+  }
+  function paintSimStatus(pos) {
+    const pct = PATH && PATH.moves.length ? Math.round(100 * Math.min(sim.mi, PATH.moves.length) / PATH.moves.length) : 0;
+    const op = pos ? P.ops[pos.i] : null;
+    const nm = op && O.OPS[op.type] ? O.OPS[op.type].name : '—';
+    const stat = `${pct}% · ${pos && pos.done ? 'đã chạy hết' : sim.play ? 'đang chạy' : 'dừng'} · ${nm}` + (pos && !pos.done && pos.kind ? ` · ${pos.kind === 'rapid' ? 'chạy nhanh' : 'chạy dao'}` : '') + (pos && pos.tail ? ' · có chống tâm' : '');
+    document.querySelectorAll('[data-simstat]').forEach(st => { st.textContent = stat; });
+    document.querySelectorAll('[data-simchips] button').forEach(b => b.classList.toggle('on', !!(pos && b.dataset.id === pos.id)));
+    document.querySelectorAll('#hitList li').forEach(li => { li.style.opacity = (li.dataset.always === '1' || Number(li.dataset.at) <= sim.mi) ? '1' : '0.4'; });
+  }
+  function syncCanvasBuffer(cv) {
+    if (!cv || cv.clientWidth < 2 || cv.clientHeight < 2) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(2, Math.round(cv.clientWidth * dpr));
+    const h = Math.max(2, Math.round(cv.clientHeight * dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  }
+  function fitViewStack(bar, canvases, dock) {
+    if (!bar || !dock || !canvases.length) return;
+    const head = document.querySelector('header.bar');
+    const tabs = document.querySelector('.tabs');
+    const top = (head ? head.getBoundingClientRect().height : 56) + 6;
+    const tabH = tabs ? Math.max(48, tabs.getBoundingClientRect().height) : 56;
+    bar.style.scrollMarginTop = top + 'px';
+    dock.style.scrollMarginBottom = (tabH + 8) + 'px';
+    bar.scrollIntoView({ block: 'start', inline: 'nearest' });
+    const limit = (tabs ? tabs.getBoundingClientRect().top : window.innerHeight) - 4;
+    let extra = dock.getBoundingClientRect().height + 8;
+    canvases.forEach(cv => {
+      const wrap = cv.parentElement;
+      if (!wrap) return;
+      const cs = getComputedStyle(wrap);
+      extra += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+      Array.prototype.forEach.call(wrap.children, ch => {
+        if (ch === cv) return;
+        if (ch === dock || (ch.contains && ch.contains(dock))) return;
+        extra += ch.getBoundingClientRect().height;
+      });
+    });
+    const avail = limit - bar.getBoundingClientRect().bottom - extra;
+    let each = Math.max(96, Math.floor(avail / canvases.length));
+    canvases.forEach(cv => { cv.style.height = each + 'px'; });
+    const over = dock.getBoundingClientRect().bottom - limit;
+    if (over > 1) {
+      each = Math.max(96, each - Math.ceil((over + 6) / canvases.length));
+      canvases.forEach(cv => { cv.style.height = each + 'px'; });
+    }
+  }
+  function fitSimFrame() {
+    const view = $('#v-igf');
+    if (igfStep !== 4 || !view || !view.classList.contains('on')) return;
+    const bar = $('#simViewBar');
+    const dock = view.querySelector('.simdock');
+    const canvases = ['#cvSim', '#cvSim3d'].map(sel => $(sel)).filter(cv => cv && cv.parentElement && !cv.parentElement.hidden);
+    fitViewStack(bar, canvases, dock);
+  }
+  function fitPrevFrame() {
+    const view = $('#v-prev');
+    if (!view || !view.classList.contains('on')) return;
+    const bar = $('#prevViewBar');
+    if (prevView === '3d') fitViewStack(bar, [$('#cvPrev3d')].filter(Boolean), document.querySelector('#prevDock3d .simdock'));
+    else fitViewStack(bar, [$('#cvSide')].filter(Boolean), document.querySelector('#prevDock2d .simdock'));
+  }
+  function scheduleFitSim() {
+    requestAnimationFrame(() => {
+      fitSimFrame();
+      if ($('#cvSim') && PATH) drawSim();
+    });
+  }
+  function scheduleFitPrev() {
+    requestAnimationFrame(() => {
+      fitPrevFrame();
+      if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
+    });
   }
   function drawSim() {
-    const cv = $('#cvSim'); if (!cv || !PATH) return;
+    if (!PATH) return;
+    const cv = $('#cvSim');
+    if (!cv) {
+      paintSimStatus(toolPos());
+      if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
+      return;
+    }
+    syncCanvasBuffer(cv);
     const g = cv.getContext('2d'), Wd = cv.width, Ht = cv.height;
     const S = Object.assign({}, O.DEFAULT_SETTINGS, P.settings);
     const stockR = PATH.blank.r, jawR = Math.max(PATH.chuck.jawR, stockR);
@@ -551,18 +679,21 @@
     g.strokeRect(X(PATH.blank.z0), Y(stockR), X(PATH.blank.z1) - X(PATH.blank.z0), Y(-stockR) - Y(stockR));
     g.setLineDash([]);
     function strokeMove(m) {
+      const view = loadView();
+      if (view.showPath === false) return;
       g.globalAlpha = 1; g.setLineDash([]);
       const rapid = m.kind === 'rapid';
-      // Cắt đoạn về điểm thay dao tại khung nhìn — nét chạy nhanh không phủ hết phôi.
       const cz = z => Math.max(zmin, Math.min(zmax, z));
       const cr = r => Math.max(-rmax, Math.min(rmax, r));
       const z0 = cz(m.z0), r0 = cr(m.r0), z1 = cz(m.z1), r1 = cr(m.r1);
       if (Math.hypot(z1 - z0, r1 - r0) < 0.05) return;
+      const px = Number(view.linePx) || 1.25;
+      const css = Math.max(1, cv.clientWidth || Wd);
       g.strokeStyle = rapid ? '#e8750a' : '#1565c0';
-      g.lineWidth = rapid ? 1.3 : 2.6;
+      g.lineWidth = Math.max(1, px * Wd / css);
       g.setLineDash(rapid ? [5, 4] : []);
       [1, -1].forEach(sg => {
-        g.globalAlpha = sg < 0 ? 0.28 : 1;
+        g.globalAlpha = sg < 0 ? 0.35 : (rapid ? 0.72 : 0.85);
         g.beginPath(); g.moveTo(X(z0), Y(sg * r0)); g.lineTo(X(z1), Y(sg * r1)); g.stroke();
       });
       g.globalAlpha = 1; g.setLineDash([]); g.lineWidth = 1;
@@ -594,14 +725,9 @@
       const x = X(Math.max(zmin, Math.min(zmax, pos.z))), y = Y(Math.max(-rmax, Math.min(rmax, pos.r)));
       g.fillStyle = '#c62828'; g.beginPath(); g.moveTo(x + 9, y); g.lineTo(x - 4, y - 6); g.lineTo(x - 4, y + 6); g.closePath(); g.fill();
     }
-    const pct = PATH.moves.length ? Math.round(100 * Math.min(sim.mi, PATH.moves.length) / PATH.moves.length) : 0;
-    const op = pos ? P.ops[pos.i] : null;
-    const nm = op && O.OPS[op.type] ? O.OPS[op.type].name : '—';
-    const st = $('#simStatus');
-    if (st) st.textContent = `${pct}% · ${pos && pos.done ? 'đã chạy hết' : sim.play ? 'đang chạy' : 'dừng'} · ${nm}` + (pos && !pos.done && pos.kind ? ` · ${pos.kind === 'rapid' ? 'chạy nhanh' : 'chạy dao'}` : '') + (pos && pos.tail ? ' · có chống tâm' : '');
-    document.querySelectorAll('#simChips button').forEach(b => b.classList.toggle('on', !!(pos && b.dataset.id === pos.id)));
-    document.querySelectorAll('#hitList li').forEach(li => { li.style.opacity = (li.dataset.always === '1' || Number(li.dataset.at) <= sim.mi) ? '1' : '0.4'; });
+    paintSimStatus(pos);
     syncSim3d(pos);
+    if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
   }
   function applySimView() {
     const w2 = $('#sim2dWrap'), w3 = $('#sim3dWrap');
@@ -619,6 +745,7 @@
     V.mount(cv);
     V.setSection(simSection);
     V.setAppearance(loadView());
+    V.setPathStyle(loadView());
     V.update({
       moves: PATH.moves, ops: P.ops, blank: PATH.blank, chuck: PATH.chuck,
       mi: sim.mi, u: sim.u, playing: sim.play,
@@ -645,9 +772,11 @@
     V.mount(cv);
     V.setSection(prevSection);
     V.setAppearance(loadView());
+    V.setPathStyle(loadView());
+    const live = simDriven && PATH;
     V.update({
       moves: path.moves, ops: P.ops, blank: path.blank, chuck: path.chuck,
-      mi: path.moves.length, u: 0, playing: false,
+      mi: live ? sim.mi : path.moves.length, u: live ? sim.u : 0, playing: !!(live && sim.play),
       tailOn: !!(last && last.tail && S.tail !== 'none'), tailDia: path.tailDia
     });
   }
@@ -670,6 +799,7 @@
     PATH = O.buildToolpath(P);
     if (reset) { sim.mi = 0; sim.u = 0; }
     renderSimChrome(); drawSim();
+    scheduleFitSim();
   }
   function renderIgf() {
     const root = $('#igfRoot'); if (!root) return;
@@ -735,32 +865,28 @@
             <div class="opb"><button type="button" data-a="up" aria-label="Lên">↑</button><button type="button" data-a="dn" aria-label="Xuống">↓</button><button type="button" data-a="ed">Sửa</button><button type="button" data-a="cp">Chép</button><button type="button" data-a="tg">${op.on === false ? 'Bật' : 'Tắt'}</button><button type="button" data-a="rm" aria-label="Xóa">🗑</button></div></li>`;
         }).join('') || '<li class="empty">Chưa có nguyên công. Thêm tay hoặc quyết định từ biên dạng.</li>'}</ol>`;
     } else if (igfStep === 4) {
-      body = `<p class="hint">Mô phỏng trước khi xuất mã. Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. 2D: phôi xám, biên dạng tinh xanh lá, chấu xám đậm, chống tâm tím, tam giác đỏ = dao. 3D: phôi tròn quay và bóc dần theo cùng đường dao. Một ngón xoay theo tay, hai ngón vừa phóng vừa kéo.</p>
-        <div class="simbar">
-          <button type="button" class="b1" id="simPlay">▶ Chạy</button>
-          <button type="button" class="b2" id="simPause">⏸ Dừng</button>
-          <button type="button" class="b2" id="simStep">Bước</button>
-          <button type="button" class="b2" id="simReset">⟲ Đầu</button>
-        </div>
-        <label class="fld"><span>Tốc độ <b id="simSpdLab">${sim.speed}×</b></span><input id="simSpeed" type="range" min="0.25" max="4" step="0.25" value="${sim.speed}"></label>
-        <p id="simStatus" class="small"></p>
-        <div class="chips" id="simChips"></div>
+      body = `<p class="hint">Nét đứt cam = chạy nhanh, nét liền xanh = chạy dao. Phôi tròn bóc dần theo cùng đường dao. Một ngón xoay theo tay, hai ngón vừa phóng vừa kéo.</p>
         <div class="simbar" id="simViewBar">
           <button type="button" class="b2${simView === '2d' ? ' on' : ''}" id="sim2d">2D</button>
           <button type="button" class="b2${simView === '3d' ? ' on' : ''}" id="sim3d">3D</button>
           <button type="button" class="b2${simView === 'both' ? ' on' : ''}" id="simBoth">Cả hai</button>
         </div>
-        <div class="cvwrap" id="sim2dWrap"${simView === '3d' ? ' hidden' : ''}><div class="cvt">Mặt cắt dọc 2D · vùng phôi (không vẽ điểm thay dao)</div><canvas id="cvSim" width="760" height="420"></canvas></div>
-        <div class="cvwrap" id="sim3dWrap"${simView === '2d' ? ' hidden' : ''}>
-          <div class="cvt">Mô phỏng 3D · phôi tròn, bóc dần · một ngón xoay theo tay, hai ngón phóng và kéo</div>
-          <canvas id="cvSim3d" width="760" height="480"></canvas>
-          <div class="simbar">
-            <button type="button" class="b2${simSection ? ' on' : ''}" id="simSection">Mặt cắt</button>
-            <button type="button" class="b2" id="simCam">Đặt lại góc nhìn</button>
+        <div class="simstage">
+          <div class="simviews">
+            <div class="cvwrap" id="sim2dWrap"${simView === '3d' ? ' hidden' : ''}><div class="cvt">Mặt cắt dọc 2D · vùng phôi (không vẽ điểm thay dao)</div><canvas id="cvSim" width="760" height="420"></canvas></div>
+            <div class="cvwrap" id="sim3dWrap"${simView === '2d' ? ' hidden' : ''}>
+              <div class="cvt">Mô phỏng 3D · một ngón xoay, hai ngón phóng và kéo</div>
+              <canvas id="cvSim3d" width="760" height="480"></canvas>
+              <div class="simbar">
+                <button type="button" class="b2${simSection ? ' on' : ''}" id="simSection">Mặt cắt</button>
+                <button type="button" class="b2" id="simCam">Đặt lại góc nhìn</button>
+              </div>
+            </div>
           </div>
-          ${colorPanelHTML()}
-          <p class="small muted">3D ước lượng tiện, rãnh, cắt đứt, khoan/tiện trong, ren và dao động lực. Không thay chạy thử không phôi trên máy.</p>
+          ${simDockHTML(true)}
         </div>
+        ${colorPanelHTML()}
+        <p class="small muted">3D ước lượng tiện, rãnh, cắt đứt, khoan/tiện trong, ren và dao động lực. Không thay chạy thử không phôi trên máy.</p>
         <div class="legend"><span class="lg h">Chạy nhanh</span><span class="lg p">Chạy dao</span><span class="lg f">Biên dạng tinh</span><span class="lg t">Chống tâm</span></div>
         <div id="simHits"></div>`;
     } else {
@@ -780,6 +906,7 @@
       <form id="igfForm" class="form" autocomplete="off">${body}</form>`;
     if (igfStep === 2) drawIgf();
     paintColorInputs();
+    paintPathControls();
     if (igfStep === 4) { applySimView(); enterSim(true); }
     if (igfStep === 5 && R) renderCode();
     else paintGate();
@@ -798,9 +925,18 @@
       });
     };
     form.oninput = form.onchange = ev => {
-      if (ev.target && ev.target.id === 'simSpeed') {
+      if (ev.target && ev.target.hasAttribute('data-simspd')) {
         sim.speed = Number(ev.target.value) || 1;
-        const lab = $('#simSpdLab'); if (lab) lab.textContent = sim.speed + '×';
+        document.querySelectorAll('[data-simspdlab]').forEach(el => { el.textContent = sim.speed + '×'; });
+        document.querySelectorAll('[data-simspd]').forEach(el => { if (el !== ev.target) el.value = String(sim.speed); });
+        return;
+      }
+      if (ev.target && ev.target.hasAttribute('data-simlw')) {
+        const v = loadView();
+        v.linePx = Number(ev.target.value) || 1.25;
+        saveView(v, ev.target);
+        if ($('#cvSim')) drawSim();
+        if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
         return;
       }
       if (ev.target && ev.target.dataset && ev.target.dataset.k && igfStep === 2 && ev.target.closest('.el')) {
@@ -832,22 +968,9 @@
       const d = applyIgf(); save(); renderIgf(); toast('Đã quyết định ' + d.ops.length + ' nguyên công'); return;
     }
     if (e.target.id === 'igfAdd') { $('#fab').click(); return; }
-    if (e.target.id === 'simPlay') {
-      if (!PATH || !PATH.moves.length) { toast('Không có đường dao'); return; }
-      if (sim.mi >= PATH.moves.length) { sim.mi = 0; sim.u = 0; }
-      sim.play = true; sim.last = 0; sim.raf = requestAnimationFrame(frame); return;
-    }
-    if (e.target.id === 'simPause') { stopSim(); drawSim(); return; }
-    if (e.target.id === 'simStep') {
-      stopSim(); if (!PATH || !PATH.moves.length) return;
-      if (sim.mi >= PATH.moves.length) { sim.mi = 0; sim.u = 0; }
-      else { sim.mi++; sim.u = 0; if (sim.mi >= PATH.moves.length) { simDoneSig = projectSig(); paintGate(); toast('Đã mô phỏng xong — có thể xuất mã'); } }
-      drawSim(); return;
-    }
-    if (e.target.id === 'simReset') { stopSim(); sim.mi = 0; sim.u = 0; drawSim(); return; }
     if (e.target.id === 'sim2d' || e.target.id === 'sim3d' || e.target.id === 'simBoth') {
       simView = e.target.id === 'sim2d' ? '2d' : e.target.id === 'sim3d' ? '3d' : 'both';
-      applySimView(); drawSim(); return;
+      applySimView(); drawSim(); scheduleFitSim(); return;
     }
     if (e.target.id === 'simSection') { simSection = !simSection; applySimView(); drawSim(); return; }
     if (e.target.id === 'simCam') { if (window.OKU3D) window.OKU3D.resetCam(); return; }
@@ -876,7 +999,7 @@
       if (b.dataset.v !== 'v-igf' && window.OKU3D.current() === $('#cvSim3d')) window.OKU3D.unmount();
       if (b.dataset.v !== 'v-prev' && window.OKU3D.current() === $('#cvPrev3d')) window.OKU3D.unmount();
     }
-    if (b.dataset.v === 'v-prev') drawPreview();
+    if (b.dataset.v === 'v-prev') { drawPreview(); scheduleFitPrev(); }
     if (b.dataset.v === 'v-igf') renderIgf();
     window.scrollTo(0, 0);
   });
@@ -891,11 +1014,28 @@
   renderSettings(); renderHelp(); refresh();
   const igfBox = $('#igfRoot'); if (igfBox) igfBox.addEventListener('click', igfRootClick);
   const prevHost = $('#prevColorHost'); if (prevHost) prevHost.innerHTML = colorPanelHTML();
+  const dock2 = $('#prevDock2d'); if (dock2) dock2.innerHTML = simDockHTML(false);
+  const dock3 = $('#prevDock3d'); if (dock3) dock3.innerHTML = simDockHTML(false);
   paintColorInputs();
-  if (window.OKU3D) window.OKU3D.setAppearance(loadView());
+  paintPathControls();
+  if (window.OKU3D) { window.OKU3D.setAppearance(loadView()); window.OKU3D.setPathStyle(loadView()); }
   document.addEventListener('input', e => {
     const t = e.target;
     if (!t || !t.dataset) return;
+    if (t.hasAttribute('data-simspd')) {
+      sim.speed = Number(t.value) || 1;
+      document.querySelectorAll('[data-simspdlab]').forEach(el => { el.textContent = sim.speed + '×'; });
+      document.querySelectorAll('[data-simspd]').forEach(el => { if (el !== t) el.value = String(sim.speed); });
+      return;
+    }
+    if (t.hasAttribute('data-simlw')) {
+      const v = loadView();
+      v.linePx = Number(t.value) || 1.25;
+      saveView(v, t);
+      if ($('#cvSim')) drawSim();
+      if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
+      return;
+    }
     if (t.dataset.c3) {
       const v = loadView();
       v[t.dataset.c3] = t.value;
@@ -909,15 +1049,46 @@
   });
   document.addEventListener('click', e => {
     const b = e.target.closest && e.target.closest('[data-c3preset]');
-    if (!b) return;
-    if (b.dataset.c3preset === 'reset') { saveView(Object.assign({}, VIEW_DEFAULT)); return; }
-    const p = VIEW_PRESETS[b.dataset.c3preset];
-    if (!p) return;
-    saveView(Object.assign({}, loadView(), p, { preset: b.dataset.c3preset }));
+    if (b) {
+      if (b.dataset.c3preset === 'reset') { saveView(Object.assign({}, VIEW_DEFAULT)); return; }
+      const p = VIEW_PRESETS[b.dataset.c3preset];
+      if (!p) return;
+      saveView(Object.assign({}, loadView(), p, { preset: b.dataset.c3preset }));
+      return;
+    }
+    const simBtn = e.target.closest && e.target.closest('[data-sim]');
+    if (!simBtn) return;
+    const act = simBtn.dataset.sim;
+    if (!PATH) PATH = O.buildToolpath(P);
+    if (act !== 'path') simDriven = true;
+    if (act === 'play') {
+      if (!PATH || !PATH.moves.length) { toast('Không có đường dao'); return; }
+      if (sim.mi >= PATH.moves.length) { sim.mi = 0; sim.u = 0; }
+      sim.play = true; sim.last = 0; if (sim.raf) cancelAnimationFrame(sim.raf); sim.raf = requestAnimationFrame(frame); return;
+    }
+    if (act === 'pause') { stopSim(); drawSim(); return; }
+    if (act === 'step') {
+      stopSim(); if (!PATH || !PATH.moves.length) return;
+      if (sim.mi >= PATH.moves.length) { sim.mi = 0; sim.u = 0; }
+      else { sim.mi++; sim.u = 0; if (sim.mi >= PATH.moves.length) { simDoneSig = projectSig(); paintGate(); toast('Đã mô phỏng xong — có thể xuất mã'); } }
+      drawSim(); return;
+    }
+    if (act === 'reset') { stopSim(); sim.mi = 0; sim.u = 0; drawSim(); return; }
+    if (act === 'path') {
+      const v = loadView();
+      v.showPath = v.showPath === false;
+      saveView(v);
+      if ($('#cvSim')) drawSim();
+      if ($('#v-prev') && $('#v-prev').classList.contains('on')) drawPreview();
+    }
   });
   const prev2 = $('#prev2d'), prev3 = $('#prev3d'), prevSec = $('#prevSection'), prevCam = $('#prevCam');
-  if (prev2) prev2.onclick = () => { prevView = '2d'; applyPrevView(); drawPreview(); };
-  if (prev3) prev3.onclick = () => { prevView = '3d'; applyPrevView(); drawPreview(); };
+  if (prev2) prev2.onclick = () => { prevView = '2d'; applyPrevView(); drawPreview(); scheduleFitPrev(); };
+  if (prev3) prev3.onclick = () => { prevView = '3d'; applyPrevView(); drawPreview(); scheduleFitPrev(); };
+  addEventListener('resize', () => {
+    if (igfStep === 4 && $('#v-igf') && $('#v-igf').classList.contains('on')) scheduleFitSim();
+    if ($('#v-prev') && $('#v-prev').classList.contains('on')) scheduleFitPrev();
+  });
   if (prevSec) prevSec.onclick = () => { prevSection = !prevSection; applyPrevView(); drawPreview(); };
   if (prevCam) prevCam.onclick = () => { if (window.OKU3D) window.OKU3D.resetCam(); };
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { });
